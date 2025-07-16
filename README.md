@@ -1,7 +1,7 @@
 <p align="center">
   <img src="img/SubwayIQ.png" width="100" alt="LiveIQ Tool logo"><br>
   <b>SubwayIQ</b><br>
-  <i>Because spreadsheets are so 2020.</i>
+  <i>Subway LiveIQ API Viewer & Custom Report Building Tool</i>
 </p>
 
 <p align="center">
@@ -35,7 +35,8 @@ Running multiple Subway® stores usually means juggling LiveIQ log‑ins and exp
 
 ## Screenshots
 
-<img src="img/ss-3.png" style="width:300px;height:300px;object-fit:cover;" alt="demo animation"><img src="img/ss-4.png" style="width:300px;height:300px;object-fit:cover;" alt="demo animation"><img src="img/ss-5.png" style="width:300px;height:300px;object-fit:cover;" alt="demo animation"><img src="img/ss-6.png" style="width:300px;height:300px;object-fit:cover;" alt="demo animation">
+<img src="img/ss-3.png" style="width:300px;height:300px;object-fit:cover;" alt="demo animation">
+<img src="img/ss-4.png" style="width:300px;height:300px;object-fit:cover;" alt="demo animation">
 
 ---
 
