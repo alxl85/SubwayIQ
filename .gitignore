@@ -1,0 +1,46 @@
+# Python
+*.pyc
+*.pyo
+*.pyd
+pycache/
+*.egg-info/
+.pytest_cache/
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+
+# Build artifacts
+dist/
+build/
+*.egg
+*.egg-info
+*.spec
+*.manifest
+
+# Logs
+error.log
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+
+# IDE files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Development tools
+.ruff_cache/
+.pre-commit-cache/
+
+# PyPI configuration
+.pypirc
