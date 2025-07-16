@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="screenshots/logo.ico" width="96" alt="LiveIQ Tool logo"><br>
+  <img src="img/SubwayIQ.png" width="100" alt="LiveIQ Tool logo"><br>
   <b>SubwayIQ</b><br>
   <i>Because spreadsheets are so 2020.</i>
 </p>
@@ -13,7 +13,7 @@
 
 ## Table of Contents
 1. [Why this exists](#why-this-exists)  
-2. [Instant demo](#instant-demo)  
+2. [Screenshots](#Screenshots)  
 3. [What this app does](#what-this-app-does)  
 4. [Module Details](#module-details)  
 5. [Quick start](#quick-start)  
@@ -35,7 +35,7 @@ Running multiple Subway® stores usually means juggling LiveIQ log‑ins and exp
 
 ## Screenshots
 
-<img src="screenshots/ss-3.png" style="width:300px;height:300px;object-fit:cover;" alt="demo animation"><img src="screenshots/ss-4.png" style="width:300px;height:300px;object-fit:cover;" alt="demo animation"><img src="screenshots/ss-5.png" style="width:300px;height:300px;object-fit:cover;" alt="demo animation"><img src="screenshots/ss-6.png" style="width:300px;height:300px;object-fit:cover;" alt="demo animation">
+<img src="img/ss-3.png" style="width:300px;height:300px;object-fit:cover;" alt="demo animation"><img src="img/ss-4.png" style="width:300px;height:300px;object-fit:cover;" alt="demo animation"><img src="img/ss-5.png" style="width:300px;height:300px;object-fit:cover;" alt="demo animation"><img src="img/ss-6.png" style="width:300px;height:300px;object-fit:cover;" alt="demo animation">
 
 ---
 
@@ -210,7 +210,7 @@ I have provided a current working version packaged into a standalone .exe but he
 ```powershell
 pyinstaller --onefile --noconsole `
   --name "SubwayIQ" `
-  --icon="screenshots/logo.ico" `
+  --icon="SubwayIQ.ico" `
   --add-data "modules;modules" `
   SubwayIQ.py
 ```
@@ -240,8 +240,8 @@ pyinstaller --onefile --noconsole `
 2. **Fresh Connect ▸ Instructions** → **Generate Keys**.  
 3. Copy *Client ID* & *Client KEY* into `config.json`.  
 
-<img src="screenshots/ss-1.png" height="400">
-<img src="screenshots/ss-2.png" width="600">
+<img src="img/ss-1.png" height="400">
+<img src="img/ss-2.png" width="600">
 </details>
 
 Add one entry per franchisee account; duplicate store numbers are auto‑deduplicated.
@@ -253,8 +253,7 @@ Add one entry per franchisee account; duplicate store numbers are auto‑dedupli
 SubwayIQ/
 ├ SubwayIQ.py
 ├ requirements.txt
-├ screenshots/
-│   └ logo.ico
+├ logo.ico
 ├ config.json
 ├ error.log
 └ modules/
