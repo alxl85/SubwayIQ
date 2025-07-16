@@ -1,4 +1,5 @@
+tkcalendar
+tenacity
 requests
-pytz
-tkinter
-Pillow
+pywin32
+pillow
