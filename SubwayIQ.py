@@ -8,7 +8,7 @@ from tkinter.scrolledtext import ScrolledText
 from tkcalendar import DateEntry
 import json
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from typing import Any, Dict, List, Set
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
@@ -742,30 +742,69 @@ def reset_modules(root):
     os.makedirs(mod_dir, exist_ok=True)
     current_files = set(os.listdir(mod_dir))
     default_modules = {"3rd-Party.py", "Transactions.py", "Items-Sold.py", "Discounts.py", "Labor.py", "Sales.py", "_CUSTOM.py"}
+    deleted_files = []
+    failed_deletions = []
+    
+    # Remove non-default .py files
     for file in current_files:
         if file.endswith(".py") and file not in default_modules:
-            os.remove(os.path.join(mod_dir, file))
-            log_error(f"Removed non-default module: {file}")
+            try:
+                file_path = os.path.join(mod_dir, file)
+                # Ensure file is writable before deletion
+                os.chmod(file_path, 0o666)  # Set permissions to allow deletion
+                os.remove(file_path)
+                deleted_files.append(file)
+                log_error(f"Removed non-default module: {file}")
+            except Exception as e:
+                failed_deletions.append(file)
+                log_error(f"Failed to remove module {file}: {e}")
+
+    # Report deletion status
+    if failed_deletions:
+        messagebox.showwarning("Deletion Warning", f"Failed to delete some non-default modules: {', '.join(failed_deletions)}. Continuing with downloads.", parent=root)
+
     # Attempt GitHub download if online
     if check_internet_connection():
+        failed_downloads = []
+        successful_downloads = []
         try:
-            import requests
-            github_base = "https://raw.githubusercontent.com/alex85/subwayiq/main/modules/"  # Replace with your GitHub repo URL
+            github_base = "https://raw.githubusercontent.com/alex85/subwayiq/main/modules/"
             for mod_name in default_modules:
                 url = github_base + mod_name
-                res = requests.get(url, timeout=5)
-                res.raise_for_status()
-                content = res.text
-                mod_path = os.path.join(mod_dir, mod_name)
-                with open(mod_path, "w", encoding="utf-8") as fh:
-                    fh.write(content)
-                log_error(f"Downloaded and restored module from GitHub: {mod_name}")
-            messagebox.showinfo("Modules Reset", "Modules reset to latest defaults from GitHub.", parent=root)
+                try:
+                    res = requests.get(url, timeout=5)
+                    res.raise_for_status()  # Raise exception for non-200 status codes
+                    content = res.text
+                    # Verify content is not empty and looks like Python code
+                    if not content.strip():
+                        raise ValueError("Downloaded content is empty")
+                    if not content.startswith("#") and not content.startswith("import") and not content.startswith("from"):
+                        raise ValueError("Downloaded content does not appear to be valid Python code")
+                    mod_path = os.path.join(mod_dir, mod_name)
+                    # Ensure file is writable
+                    if os.path.exists(mod_path):
+                        os.chmod(mod_path, 0o666)
+                    with open(mod_path, "w", encoding="utf-8") as fh:
+                        fh.write(content)
+                    successful_downloads.append(mod_name)
+                    log_error(f"Downloaded and restored module from GitHub: {mod_name}")
+                    time.sleep(2)  # Sleep for 2 seconds between downloads
+                except Exception as e:
+                    failed_downloads.append(mod_name)
+                    log_error(f"Failed to download module {mod_name}: {e} (HTTP Status: {res.status_code if 'res' in locals() else 'N/A'})")
+            
+            # Report download status
+            if failed_downloads:
+                messagebox.showerror("Reset Error", f"Failed to download modules from GitHub: {', '.join(failed_downloads)}. Successfully downloaded: {', '.join(successful_downloads) if successful_downloads else 'none'}. Modules partially reset.", parent=root)
+            else:
+                messagebox.showinfo("Modules Reset", f"Modules reset to latest defaults from GitHub. Successfully downloaded: {', '.join(successful_downloads)}.", parent=root)
         except Exception as e:
             log_error(f"GitHub download failed: {e}")
-            messagebox.showerror("Reset Error", f"Failed to download modules from GitHub: {e}. Modules partially reset.", parent=root)
+            messagebox.showerror("Reset Error", f"Failed to download modules from GitHub: {e}. Successfully downloaded: {', '.join(successful_downloads) if successful_downloads else 'none'}. Modules partially reset.", parent=root)
     else:
         messagebox.showerror("No Internet", "No internet connection. Cannot download modules from GitHub.", parent=root)
+
+    # Reload modules
     load_external_modules(root)
 
 def validate_and_view(endpoint, stores, start, end, root):
