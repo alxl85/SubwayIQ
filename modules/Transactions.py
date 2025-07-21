@@ -59,7 +59,7 @@ def export_file(fmt, window, txt, transactions_data, store_summary, daily_breakd
             for entry in transactions_data:
                 writer.writerow([entry["Store"], entry["Date"], entry["Time"], entry["Type"], entry["Receipt"], entry["Clerk"], entry["Channel"], entry["Sale Type"], entry["Units"], entry["Order Source"], entry["Delivery Provider"], entry["Delivery Partner"], f"{entry['Total']:.2f}", f"{entry['Net Total']:.2f}", f"{entry['Tax']:.2f}"])
             writer.writerow([])
-            writer.writerow(["Store Summary"])
+            writer.writerow(["Store Summaries"])
             writer.writerow(["Store", "Total Sales", "Total Net", "Total Tax", "Total Units", "Total Txns", "EatIn", "ToGo", "Deliv", "Avg Tx $", "Void #", "Void $", "Refund #", "Refund $"])
             for sid in selected_stores:
                 ss = store_summary.get(sid, {"total_sales": 0.0, "total_net": 0.0, "total_tax": 0.0, "total_units": 0, "total_txns": 0, "eatin": 0, "togo": 0, "delivery": 0, "avg_tx": 0.0, "void_count": 0, "void_total": 0.0, "refund_count": 0, "refund_total": 0.0})
@@ -73,6 +73,18 @@ def export_file(fmt, window, txt, transactions_data, store_summary, daily_breakd
                         for entry in daily_breakdown[date]:
                             if entry["Store"] == sid:
                                 writer.writerow([date, entry["Store"], f"{entry['total_sales']:.2f}", f"{entry['total_net']:.2f}", 
+                                                f"{entry['total_tax']:.2f}", entry["total_units"], entry["total_txns"], 
+                                                entry["eatin"], entry["togo"], entry["delivery"], f"{entry['avg_tx']:.2f}", 
+                                                entry["void_count"], f"{entry['void_total']:.2f}", entry["refund_count"], 
+                                                f"{entry['refund_total']:.2f}"])
+                writer.writerow([])
+                writer.writerow(["Per-Store Breakdown"])
+                writer.writerow(["Store", "Date", "Total Sales", "Total Net", "Total Tax", "Total Units", "Total Txns", "EatIn", "ToGo", "Deliv", "Avg Tx $", "Void #", "Void $", "Refund #", "Refund $"])
+                for sid in selected_stores:
+                    for date in sorted(daily_breakdown):
+                        for entry in daily_breakdown[date]:
+                            if entry["Store"] == sid:
+                                writer.writerow([entry["Store"], date, f"{entry['total_sales']:.2f}", f"{entry['total_net']:.2f}", 
                                                 f"{entry['total_tax']:.2f}", entry["total_units"], entry["total_txns"], 
                                                 entry["eatin"], entry["togo"], entry["delivery"], f"{entry['avg_tx']:.2f}", 
                                                 entry["void_count"], f"{entry['void_total']:.2f}", entry["refund_count"], 
@@ -95,14 +107,14 @@ def export_file(fmt, window, txt, transactions_data, store_summary, daily_breakd
             "date_range": f"{start_date} to {end_date}",
             "stores": selected_stores,
             "transaction_entries": transactions_data,
-            "store_summary": [{"Store": sid, "Total Sales": ss["total_sales"], "Total Net": ss["total_net"], "Total Tax": ss["total_tax"], 
-                              "Total Units": ss["total_units"], "Total Txns": ss["total_txns"], "EatIn": ss["eatin"], "ToGo": ss["togo"], 
-                              "Deliv": ss["delivery"], "Avg Tx $": ss["avg_tx"], "Void #": ss["void_count"], "Void $": ss["void_total"], 
-                              "Refund #": ss["refund_count"], "Refund $": ss["refund_total"]} 
-                             for sid in selected_stores 
-                             for ss in [store_summary.get(sid, {"total_sales": 0.0, "total_net": 0.0, "total_tax": 0.0, "total_units": 0, 
-                                                                "total_txns": 0, "eatin": 0, "togo": 0, "delivery": 0, "avg_tx": 0.0, 
-                                                                "void_count": 0, "void_total": 0.0, "refund_count": 0, "refund_total": 0.0})]],
+            "store_summaries": [{"Store": sid, "Total Sales": ss["total_sales"], "Total Net": ss["total_net"], "Total Tax": ss["total_tax"], 
+                                "Total Units": ss["total_units"], "Total Txns": ss["total_txns"], "EatIn": ss["eatin"], "ToGo": ss["togo"], 
+                                "Deliv": ss["delivery"], "Avg Tx $": ss["avg_tx"], "Void #": ss["void_count"], "Void $": ss["void_total"], 
+                                "Refund #": ss["refund_count"], "Refund $": ss["refund_total"]} 
+                               for sid in selected_stores 
+                               for ss in [store_summary.get(sid, {"total_sales": 0.0, "total_net": 0.0, "total_tax": 0.0, "total_units": 0, 
+                                                                  "total_txns": 0, "eatin": 0, "togo": 0, "delivery": 0, "avg_tx": 0.0, 
+                                                                  "void_count": 0, "void_total": 0.0, "refund_count": 0, "refund_total": 0.0})]],
             "void_refund_summary": [{"Store": sid, "Void #": ss["void_count"], "Void $": ss["void_total"], 
                                      "Refund #": ss["refund_count"], "Refund $": ss["refund_total"]} 
                                     for sid in selected_stores 
@@ -121,6 +133,13 @@ def export_file(fmt, window, txt, transactions_data, store_summary, daily_breakd
                                                      "Refund #": entry["refund_count"], "Refund $": entry["refund_total"]} 
                                                     for sid in selected_stores for entry in entries if entry["Store"] == sid] 
                                                    for date, entries in sorted(daily_breakdown.items())}
+            export_data["per_store_breakdown"] = {sid: [{"Date": date, "Total Sales": entry["total_sales"], "Total Net": entry["total_net"], 
+                                                        "Total Tax": entry["total_tax"], "Total Units": entry["total_units"], "Total Txns": entry["total_txns"], 
+                                                        "EatIn": entry["eatin"], "ToGo": entry["togo"], "Deliv": entry["delivery"], 
+                                                        "Avg Tx $": entry["avg_tx"], "Void #": entry["void_count"], "Void $": entry["void_total"], 
+                                                        "Refund #": entry["refund_count"], "Refund $": entry["refund_total"]} 
+                                                       for date in sorted(daily_breakdown) for entry in daily_breakdown[date] if entry["Store"] == sid] 
+                                                      for sid in selected_stores}
         with open(fname, "w", encoding="utf-8") as f:
             json.dump(export_data, f, indent=2)
     elif fmt == "TXT":
@@ -148,110 +167,65 @@ def export_file(fmt, window, txt, transactions_data, store_summary, daily_breakd
             elements.append(Paragraph(f"Stores: {', '.join(selected_stores)}", styles["Normal"]))
             elements.append(Spacer(1, 12))
             elements.append(Paragraph("Transaction Entries", styles["Heading2"]))
+            elements.append(Paragraph(f"{'Store':<6} {'Date':<10} {'Time':<8} {'Type':<5} {'Receipt':<10} {'Clerk':<20} {'Channel':<20} {'Sale Type':<10} {'Units':>5} {'Order Source':<20} {'Delivery Provider':<15} {'Delivery Partner':<15} {'Total':>10} {'Net Total':>10} {'Tax':>8}", style))
+            elements.append(Paragraph("─" * 120, style))
             for entry in transactions_data:
-                text = (f"Store: {entry['Store']:<6}<br/>"
-                        f"Date: {entry['Date']}<br/>"
-                        f"Time: {entry['Time']}<br/>"
-                        f"Type: {entry['Type']}<br/>"
-                        f"Receipt: {entry['Receipt']}<br/>"
-                        f"Clerk: {entry['Clerk']}<br/>"
-                        f"Channel: {entry['Channel']}<br/>"
-                        f"Sale Type: {entry['Sale Type']}<br/>"
-                        f"Units: {entry['Units']}<br/>"
-                        f"Order Source: {entry['Order Source']}<br/>"
-                        f"Delivery Provider: {entry['Delivery Provider']}<br/>"
-                        f"Delivery Partner: {entry['Delivery Partner']}<br/>"
-                        f"Total: ${entry['Total']:.2f}<br/>"
-                        f"Net Total: ${entry['Net Total']:.2f}<br/>"
-                        f"Tax: ${entry['Tax']:.2f}<br/>")
+                text = (f"{entry['Store']:<6} {entry['Date']:<10} {entry['Time']:<8} {entry['Type']:<5} {entry['Receipt']:<10} {entry['Clerk'][:20]:<20} "
+                        f"{entry['Channel'][:20]:<20} {entry['Sale Type'][:10]:<10} {entry['Units']:>5} {entry['Order Source'][:20]:<20} "
+                        f"{entry['Delivery Provider'][:15]:<15} {entry['Delivery Partner'][:15]:<15} ${entry['Total']:>9.2f} ${entry['Net Total']:>9.2f} ${entry['Tax']:>8.2f}")
                 elements.append(Paragraph(text, style))
                 elements.append(Spacer(1, 12))
-            elements.append(Paragraph("Store Summary", styles["Heading2"]))
+            elements.append(Paragraph("Store Summaries", styles["Heading2"]))
+            elements.append(Paragraph(f"{'Store':<6} {'TotSales':>10} {'TotNet':>8} {'TotTax':>8} {'TotUnits':>8} {'TotTxns':>8} {'EatIn':>5} {'ToGo':>5} {'Deliv':>5} {'AvgTx$':>8} {'Void#':>5} {'Void$':>8} {'Rfund#':>6} {'Rfund$':>8}", style))
+            elements.append(Paragraph("─" * 75, style))
             for sid in selected_stores:
                 ss = store_summary.get(sid, {"total_sales": 0.0, "total_net": 0.0, "total_tax": 0.0, "total_units": 0, "total_txns": 0, 
                                             "eatin": 0, "togo": 0, "delivery": 0, "avg_tx": 0.0, "void_count": 0, "void_total": 0.0, 
                                             "refund_count": 0, "refund_total": 0.0})
-                text = (f"Store: {sid:<6}<br/>"
-                        f"Total Sales: ${ss['total_sales']:>10.2f}<br/>"
-                        f"Total Net: ${ss['total_net']:>8.2f}<br/>"
-                        f"Total Tax: ${ss['total_tax']:>8.2f}<br/>"
-                        f"Total Units: {ss['total_units']:>8}<br/>"
-                        f"Total Txns: {ss['total_txns']:>8}<br/>"
-                        f"EatIn: {ss['eatin']:>5}<br/>"
-                        f"ToGo: {ss['togo']:>5}<br/>"
-                        f"Deliv: {ss['delivery']:>5}<br/>"
-                        f"Avg Tx $: ${ss['avg_tx']:>8.2f}<br/>"
-                        f"Void #: {ss['void_count']:>5}<br/>"
-                        f"Void $: ${ss['void_total']:>8.2f}<br/>"
-                        f"Refund #: {ss['refund_count']:>6}<br/>"
-                        f"Refund $: ${ss['refund_total']:>8.2f}<br/>")
+                text = (f"{sid:<6} {ss['total_sales']:>10.2f} {ss['total_net']:>8.2f} {ss['total_tax']:>8.2f} {ss['total_units']:>8} {ss['total_txns']:>8} "
+                        f"{ss['eatin']:>5} {ss['togo']:>5} {ss['delivery']:>5} {ss['avg_tx']:>8.2f} {ss['void_count']:>5} {ss['void_total']:>8.2f} "
+                        f"{ss['refund_count']:>6} {ss['refund_total']:>8.2f}")
                 elements.append(Paragraph(text, style))
                 elements.append(Spacer(1, 12))
             if not is_single_day:
                 elements.append(Paragraph("Per-Day Transaction Summary", styles["Heading2"]))
+                elements.append(Paragraph(f"{'Date':<10} {'Store':<6} {'TotSales':>10} {'TotNet':>8} {'TotTax':>8} {'TotUnits':>8} {'TotTxns':>8} {'EatIn':>5} {'ToGo':>5} {'Deliv':>5} {'AvgTx$':>8} {'Void#':>5} {'Void$':>8} {'Rfund#':>6} {'Rfund$':>8}", style))
+                elements.append(Paragraph("─" * 75, style))
                 for date in sorted(daily_breakdown):
-                    elements.append(Paragraph(f"Date: {date}", styles["Heading3"]))
                     for sid in selected_stores:
                         for entry in daily_breakdown[date]:
                             if entry["Store"] == sid:
-                                text = (f"Store: {entry['Store']:<6}<br/>"
-                                        f"Total Sales: ${entry['total_sales']:>10.2f}<br/>"
-                                        f"Total Net: ${entry['total_net']:>8.2f}<br/>"
-                                        f"Total Tax: ${entry['total_tax']:>8.2f}<br/>"
-                                        f"Total Units: {entry['total_units']:>8}<br/>"
-                                        f"Total Txns: {entry['total_txns']:>8}<br/>"
-                                        f"EatIn: {entry['eatin']:>5}<br/>"
-                                        f"ToGo: {entry['togo']:>5}<br/>"
-                                        f"Deliv: {entry['delivery']:>5}<br/>"
-                                        f"Avg Tx $: ${entry['avg_tx']:>8.2f}<br/>"
-                                        f"Void #: {entry['void_count']:>5}<br/>"
-                                        f"Void $: ${entry['void_total']:>8.2f}<br/>"
-                                        f"Refund #: {entry['refund_count']:>6}<br/>"
-                                        f"Refund $: ${entry['refund_total']:>8.2f}<br/>")
+                                text = (f"{date:<10} {entry['Store']:<6} {entry['total_sales']:>10.2f} {entry['total_net']:>8.2f} {entry['total_tax']:>8.2f} "
+                                        f"{entry['total_units']:>8} {entry['total_txns']:>8} {entry['eatin']:>5} {entry['togo']:>5} {entry['delivery']:>5} "
+                                        f"{entry['avg_tx']:>8.2f} {entry['void_count']:>5} {entry['void_total']:>8.2f} {entry['refund_count']:>6} {entry['refund_total']:>8.2f}")
                                 elements.append(Paragraph(text, style))
                                 elements.append(Spacer(1, 12))
                 elements.append(Paragraph("Per-Store Breakdown", styles["Heading2"]))
+                elements.append(Paragraph(f"{'Store':<6} {'Date':<10} {'TotSales':>10} {'TotNet':>8} {'TotTax':>8} {'TotUnits':>8} {'TotTxns':>8} {'EatIn':>5} {'ToGo':>5} {'Deliv':>5} {'AvgTx$':>8} {'Void#':>5} {'Void$':>8} {'Rfund#':>6} {'Rfund$':>8}", style))
+                elements.append(Paragraph("─" * 75, style))
                 for sid in selected_stores:
-                    elements.append(Paragraph(f"Store: {sid}", styles["Heading3"]))
                     for date in sorted(daily_breakdown):
                         for entry in daily_breakdown[date]:
                             if entry["Store"] == sid:
-                                text = (f"Date: {date}<br/>"
-                                        f"Total Sales: ${entry['total_sales']:>10.2f}<br/>"
-                                        f"Total Net: ${entry['total_net']:>8.2f}<br/>"
-                                        f"Total Tax: ${entry['total_tax']:>8.2f}<br/>"
-                                        f"Total Units: {entry['total_units']:>8}<br/>"
-                                        f"Total Txns: {entry['total_txns']:>8}<br/>"
-                                        f"EatIn: {entry['eatin']:>5}<br/>"
-                                        f"ToGo: {entry['togo']:>5}<br/>"
-                                        f"Deliv: {entry['delivery']:>5}<br/>"
-                                        f"Avg Tx $: ${entry['avg_tx']:>8.2f}<br/>"
-                                        f"Void #: {entry['void_count']:>5}<br/>"
-                                        f"Void $: ${entry['void_total']:>8.2f}<br/>"
-                                        f"Refund #: {entry['refund_count']:>6}<br/>"
-                                        f"Refund $: ${entry['refund_total']:>8.2f}<br/>")
+                                text = (f"{entry['Store']:<6} {date:<10} {entry['total_sales']:>10.2f} {entry['total_net']:>8.2f} {entry['total_tax']:>8.2f} "
+                                        f"{entry['total_units']:>8} {entry['total_txns']:>8} {entry['eatin']:>5} {entry['togo']:>5} {entry['delivery']:>5} "
+                                        f"{entry['avg_tx']:>8.2f} {entry['void_count']:>5} {entry['void_total']:>8.2f} {entry['refund_count']:>6} {entry['refund_total']:>8.2f}")
                                 elements.append(Paragraph(text, style))
                                 elements.append(Spacer(1, 12))
             elements.append(Paragraph("Void/Refund Summary", styles["Heading2"]))
+            elements.append(Paragraph(f"{'Store':<6} {'Void #':>6} {'Void $':>8} {'Refund #':>8} {'Refund $':>8}", style))
+            elements.append(Paragraph("─" * 37, style))
             for sid in selected_stores:
                 ss = store_summary.get(sid, {"void_count": 0, "void_total": 0.0, "refund_count": 0, "refund_total": 0.0})
-                text = (f"Store: {sid:<6}<br/>"
-                        f"Void #: {ss['void_count']:>5}<br/>"
-                        f"Void $: ${ss['void_total']:>8.2f}<br/>"
-                        f"Refund #: {ss['refund_count']:>6}<br/>"
-                        f"Refund $: ${ss['refund_total']:>8.2f}<br/>")
+                text = (f"{sid:<6} {ss['void_count']:>6} {ss['void_total']:>8.2f} {ss['refund_count']:>8} {ss['refund_total']:>8.2f}")
                 elements.append(Paragraph(text, style))
                 elements.append(Spacer(1, 12))
             elements.append(Paragraph("Voided/Refunded Transactions", styles["Heading2"]))
+            elements.append(Paragraph(f"{'Store':<6} {'Date':<10} {'Time':<8} {'Type':<5} {'Receipt #':<9} {'Clerk':<15} {'Amount $':>8}", style))
+            elements.append(Paragraph("─" * 63, style))
             vr_list = [entry for entry in transactions_data if entry["Type"].lower() in ["void", "refund"]]
             for entry in sorted(vr_list, key=lambda x: (x["Store"], x["Date"], x["Time"])):
-                text = (f"Store: {entry['Store']:<6}<br/>"
-                        f"Date: {entry['Date']}<br/>"
-                        f"Time: {entry['Time']}<br/>"
-                        f"Type: {entry['Type']:<5}<br/>"
-                        f"Receipt #: {entry['Receipt']:<9}<br/>"
-                        f"Clerk: {entry['Clerk'][:15]:<15}<br/>"
-                        f"Amount $: ${entry['Total']:>8.2f}<br/>")
+                text = (f"{entry['Store']:<6} {entry['Date']:<10} {entry['Time']:<8} {entry['Type']:<5} {entry['Receipt']:<9} {entry['Clerk'][:15]:<15} {entry['Total']:>8.2f}")
                 elements.append(Paragraph(text, style))
                 elements.append(Spacer(1, 12))
             doc.build(elements)
@@ -409,110 +383,65 @@ def create_toolbar(window, txt, title, transactions_data, store_summary, daily_b
             elements.append(Paragraph(f"Stores: {', '.join(selected_stores)}", styles["Normal"]))
             elements.append(Spacer(1, 12))
             elements.append(Paragraph("Transaction Entries", styles["Heading2"]))
+            elements.append(Paragraph(f"{'Store':<6} {'Date':<10} {'Time':<8} {'Type':<5} {'Receipt':<10} {'Clerk':<20} {'Channel':<20} {'Sale Type':<10} {'Units':>5} {'Order Source':<20} {'Delivery Provider':<15} {'Delivery Partner':<15} {'Total':>10} {'Net Total':>10} {'Tax':>8}", style))
+            elements.append(Paragraph("─" * 120, style))
             for entry in transactions_data:
-                text = (f"Store: {entry['Store']:<6}<br/>"
-                        f"Date: {entry['Date']}<br/>"
-                        f"Time: {entry['Time']}<br/>"
-                        f"Type: {entry['Type']}<br/>"
-                        f"Receipt: {entry['Receipt']}<br/>"
-                        f"Clerk: {entry['Clerk']}<br/>"
-                        f"Channel: {entry['Channel']}<br/>"
-                        f"Sale Type: {entry['Sale Type']}<br/>"
-                        f"Units: {entry['Units']}<br/>"
-                        f"Order Source: {entry['Order Source']}<br/>"
-                        f"Delivery Provider: {entry['Delivery Provider']}<br/>"
-                        f"Delivery Partner: {entry['Delivery Partner']}<br/>"
-                        f"Total: ${entry['Total']:.2f}<br/>"
-                        f"Net Total: ${entry['Net Total']:.2f}<br/>"
-                        f"Tax: ${entry['Tax']:.2f}<br/>")
+                text = (f"{entry['Store']:<6} {entry['Date']:<10} {entry['Time']:<8} {entry['Type']:<5} {entry['Receipt']:<10} {entry['Clerk'][:20]:<20} "
+                        f"{entry['Channel'][:20]:<20} {entry['Sale Type'][:10]:<10} {entry['Units']:>5} {entry['Order Source'][:20]:<20} "
+                        f"{entry['Delivery Provider'][:15]:<15} {entry['Delivery Partner'][:15]:<15} ${entry['Total']:>9.2f} ${entry['Net Total']:>9.2f} ${entry['Tax']:>8.2f}")
                 elements.append(Paragraph(text, style))
                 elements.append(Spacer(1, 12))
-            elements.append(Paragraph("Store Summary", styles["Heading2"]))
+            elements.append(Paragraph("Store Summaries", styles["Heading2"]))
+            elements.append(Paragraph(f"{'Store':<6} {'TotSales':>10} {'TotNet':>8} {'TotTax':>8} {'TotUnits':>8} {'TotTxns':>8} {'EatIn':>5} {'ToGo':>5} {'Deliv':>5} {'AvgTx$':>8} {'Void#':>5} {'Void$':>8} {'Rfund#':>6} {'Rfund$':>8}", style))
+            elements.append(Paragraph("─" * 75, style))
             for sid in selected_stores:
                 ss = store_summary.get(sid, {"total_sales": 0.0, "total_net": 0.0, "total_tax": 0.0, "total_units": 0, "total_txns": 0, 
                                             "eatin": 0, "togo": 0, "delivery": 0, "avg_tx": 0.0, "void_count": 0, "void_total": 0.0, 
                                             "refund_count": 0, "refund_total": 0.0})
-                text = (f"Store: {sid:<6}<br/>"
-                        f"Total Sales: ${ss['total_sales']:>10.2f}<br/>"
-                        f"Total Net: ${ss['total_net']:>8.2f}<br/>"
-                        f"Total Tax: ${ss['total_tax']:>8.2f}<br/>"
-                        f"Total Units: {ss['total_units']:>8}<br/>"
-                        f"Total Txns: {ss['total_txns']:>8}<br/>"
-                        f"EatIn: {ss['eatin']:>5}<br/>"
-                        f"ToGo: {ss['togo']:>5}<br/>"
-                        f"Deliv: {ss['delivery']:>5}<br/>"
-                        f"Avg Tx $: ${ss['avg_tx']:>8.2f}<br/>"
-                        f"Void #: {ss['void_count']:>5}<br/>"
-                        f"Void $: ${ss['void_total']:>8.2f}<br/>"
-                        f"Refund #: {ss['refund_count']:>6}<br/>"
-                        f"Refund $: ${ss['refund_total']:>8.2f}<br/>")
+                text = (f"{sid:<6} {ss['total_sales']:>10.2f} {ss['total_net']:>8.2f} {ss['total_tax']:>8.2f} {ss['total_units']:>8} {ss['total_txns']:>8} "
+                        f"{ss['eatin']:>5} {ss['togo']:>5} {ss['delivery']:>5} {ss['avg_tx']:>8.2f} {ss['void_count']:>5} {ss['void_total']:>8.2f} "
+                        f"{ss['refund_count']:>6} {ss['refund_total']:>8.2f}")
                 elements.append(Paragraph(text, style))
                 elements.append(Spacer(1, 12))
             if not (start_date == end_date):
                 elements.append(Paragraph("Per-Day Transaction Summary", styles["Heading2"]))
+                elements.append(Paragraph(f"{'Date':<10} {'Store':<6} {'TotSales':>10} {'TotNet':>8} {'TotTax':>8} {'TotUnits':>8} {'TotTxns':>8} {'EatIn':>5} {'ToGo':>5} {'Deliv':>5} {'AvgTx$':>8} {'Void#':>5} {'Void$':>8} {'Rfund#':>6} {'Rfund$':>8}", style))
+                elements.append(Paragraph("─" * 75, style))
                 for date in sorted(daily_breakdown):
-                    elements.append(Paragraph(f"Date: {date}", styles["Heading3"]))
                     for sid in selected_stores:
                         for entry in daily_breakdown[date]:
                             if entry["Store"] == sid:
-                                text = (f"Store: {entry['Store']:<6}<br/>"
-                                        f"Total Sales: ${entry['total_sales']:>10.2f}<br/>"
-                                        f"Total Net: ${entry['total_net']:>8.2f}<br/>"
-                                        f"Total Tax: ${entry['total_tax']:>8.2f}<br/>"
-                                        f"Total Units: {entry['total_units']:>8}<br/>"
-                                        f"Total Txns: {entry['total_txns']:>8}<br/>"
-                                        f"EatIn: {entry['eatin']:>5}<br/>"
-                                        f"ToGo: {entry['togo']:>5}<br/>"
-                                        f"Deliv: {entry['delivery']:>5}<br/>"
-                                        f"Avg Tx $: ${entry['avg_tx']:>8.2f}<br/>"
-                                        f"Void #: {entry['void_count']:>5}<br/>"
-                                        f"Void $: ${entry['void_total']:>8.2f}<br/>"
-                                        f"Refund #: {entry['refund_count']:>6}<br/>"
-                                        f"Refund $: ${entry['refund_total']:>8.2f}<br/>")
+                                text = (f"{date:<10} {entry['Store']:<6} {entry['total_sales']:>10.2f} {entry['total_net']:>8.2f} {entry['total_tax']:>8.2f} "
+                                        f"{entry['total_units']:>8} {entry['total_txns']:>8} {entry['eatin']:>5} {entry['togo']:>5} {entry['delivery']:>5} "
+                                        f"{entry['avg_tx']:>8.2f} {entry['void_count']:>5} {entry['void_total']:>8.2f} {entry['refund_count']:>6} {entry['refund_total']:>8.2f}")
                                 elements.append(Paragraph(text, style))
                                 elements.append(Spacer(1, 12))
                 elements.append(Paragraph("Per-Store Breakdown", styles["Heading2"]))
+                elements.append(Paragraph(f"{'Store':<6} {'Date':<10} {'TotSales':>10} {'TotNet':>8} {'TotTax':>8} {'TotUnits':>8} {'TotTxns':>8} {'EatIn':>5} {'ToGo':>5} {'Deliv':>5} {'AvgTx$':>8} {'Void#':>5} {'Void$':>8} {'Rfund#':>6} {'Rfund$':>8}", style))
+                elements.append(Paragraph("─" * 75, style))
                 for sid in selected_stores:
-                    elements.append(Paragraph(f"Store: {sid}", styles["Heading3"]))
                     for date in sorted(daily_breakdown):
                         for entry in daily_breakdown[date]:
                             if entry["Store"] == sid:
-                                text = (f"Date: {date}<br/>"
-                                        f"Total Sales: ${entry['total_sales']:>10.2f}<br/>"
-                                        f"Total Net: ${entry['total_net']:>8.2f}<br/>"
-                                        f"Total Tax: ${entry['total_tax']:>8.2f}<br/>"
-                                        f"Total Units: {entry['total_units']:>8}<br/>"
-                                        f"Total Txns: {entry['total_txns']:>8}<br/>"
-                                        f"EatIn: {entry['eatin']:>5}<br/>"
-                                        f"ToGo: {entry['togo']:>5}<br/>"
-                                        f"Deliv: {entry['delivery']:>5}<br/>"
-                                        f"Avg Tx $: ${entry['avg_tx']:>8.2f}<br/>"
-                                        f"Void #: {entry['void_count']:>5}<br/>"
-                                        f"Void $: ${entry['void_total']:>8.2f}<br/>"
-                                        f"Refund #: {entry['refund_count']:>6}<br/>"
-                                        f"Refund $: ${entry['refund_total']:>8.2f}<br/>")
+                                text = (f"{entry['Store']:<6} {date:<10} {entry['total_sales']:>10.2f} {entry['total_net']:>8.2f} {entry['total_tax']:>8.2f} "
+                                        f"{entry['total_units']:>8} {entry['total_txns']:>8} {entry['eatin']:>5} {entry['togo']:>5} {entry['delivery']:>5} "
+                                        f"{entry['avg_tx']:>8.2f} {entry['void_count']:>5} {entry['void_total']:>8.2f} {entry['refund_count']:>6} {entry['refund_total']:>8.2f}")
                                 elements.append(Paragraph(text, style))
                                 elements.append(Spacer(1, 12))
             elements.append(Paragraph("Void/Refund Summary", styles["Heading2"]))
+            elements.append(Paragraph(f"{'Store':<6} {'Void #':>6} {'Void $':>8} {'Refund #':>8} {'Refund $':>8}", style))
+            elements.append(Paragraph("─" * 37, style))
             for sid in selected_stores:
                 ss = store_summary.get(sid, {"void_count": 0, "void_total": 0.0, "refund_count": 0, "refund_total": 0.0})
-                text = (f"Store: {sid:<6}<br/>"
-                        f"Void #: {ss['void_count']:>5}<br/>"
-                        f"Void $: ${ss['void_total']:>8.2f}<br/>"
-                        f"Refund #: {ss['refund_count']:>6}<br/>"
-                        f"Refund $: ${ss['refund_total']:>8.2f}<br/>")
+                text = (f"{sid:<6} {ss['void_count']:>6} {ss['void_total']:>8.2f} {ss['refund_count']:>8} {ss['refund_total']:>8.2f}")
                 elements.append(Paragraph(text, style))
                 elements.append(Spacer(1, 12))
             elements.append(Paragraph("Voided/Refunded Transactions", styles["Heading2"]))
+            elements.append(Paragraph(f"{'Store':<6} {'Date':<10} {'Time':<8} {'Type':<5} {'Receipt #':<9} {'Clerk':<15} {'Amount $':>8}", style))
+            elements.append(Paragraph("─" * 63, style))
             vr_list = [entry for entry in transactions_data if entry["Type"].lower() in ["void", "refund"]]
             for entry in sorted(vr_list, key=lambda x: (x["Store"], x["Date"], x["Time"])):
-                text = (f"Store: {entry['Store']:<6}<br/>"
-                        f"Date: {entry['Date']}<br/>"
-                        f"Time: {entry['Time']}<br/>"
-                        f"Type: {entry['Type']:<5}<br/>"
-                        f"Receipt #: {entry['Receipt']:<9}<br/>"
-                        f"Clerk: {entry['Clerk'][:15]:<15}<br/>"
-                        f"Amount $: ${entry['Total']:>8.2f}<br/>")
+                text = (f"{entry['Store']:<6} {entry['Date']:<10} {entry['Time']:<8} {entry['Type']:<5} {entry['Receipt']:<9} {entry['Clerk'][:15]:<15} {entry['Total']:>8.2f}")
                 elements.append(Paragraph(text, style))
                 elements.append(Spacer(1, 12))
             doc.build(elements)
@@ -634,13 +563,14 @@ def run(window):
 
             # Start report
             log(f"Transactions Report: {start_date_str} to {end_date_str}", "title")
-            log(f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", "sep")
-            log(f"Stores: {', '.join(selected_stores)}", "sep")
             log(f"Fetching data for {len(store_map)} stores...", "sep")
             log("", None)
 
+            # Header for transaction entries
+            hdr_txn = f"{'Store':<6} {'Date':<10} {'Time':<8} {'Type':<5} {'Receipt':<10} {'Clerk':<20} {'Channel':<20} {'Sale Type':<10} {'Units':>5} {'Order Source':<20} {'Delivery Provider':<15} {'Delivery Partner':<15} {'Total':>10} {'Net Total':>10} {'Tax':>8}"
+
             # Header for summary views
-            hdr = f"{'Store':<6} {'TotSales':>10} {'TotNet':>8} {'TotTax':>8} {'TotUnits':>8} {'TotTxns':>8} {'EatIn':>5} {'ToGo':>5} {'Deliv':>5} {'AvgTx$':>8} {'Void#':>5} {'Void$':>8} {'Rfund#':>6} {'Rfund$':>8}"
+            hdr_sum = f"{'Store':<6} {'TotSales':>10} {'TotNet':>8} {'TotTax':>8} {'TotUnits':>8} {'TotTxns':>8} {'EatIn':>5} {'ToGo':>5} {'Deliv':>5} {'AvgTx$':>8} {'Void#':>5} {'Void$':>8} {'Rfund#':>6} {'Rfund$':>8}"
 
             # Fetch transaction data per store
             futures = {}
@@ -744,22 +674,25 @@ def run(window):
             for sid in selected_stores:
                 log("", None)
                 log(f"Transactions for Store {sid}", "title")
+                log("─" * 120, "sep")
+                log(hdr_txn, "heading")
+                log("─" * 120, "sep")
                 has_txn = False
                 for entry in sorted(transactions_data, key=lambda x: (x["Date"], x["Time"])):
                     if entry["Store"] == sid:
                         has_txn = True
-                        log(f"{entry['Date']} {entry['Time']:<8} | {entry['Type']:<5} | Receipt #{entry['Receipt']:<9} | Clerk: {entry['Clerk']:<15} | "
-                            f"Channel: {entry['Channel']:<10} | Sale Type: {entry['Sale Type']:<10} | Units: {entry['Units']:>3} | "
-                            f"Order Source: {entry['Order Source']:<10} | Delivery Provider: {entry['Delivery Provider']:<10} | "
-                            f"Delivery Partner: {entry['Delivery Partner']:<10} | Total: ${entry['Total']:>8.2f} | "
-                            f"Net Total: ${entry['Net Total']:>8.2f} | Tax: ${entry['Tax']:>8.2f}")
+                        log(f"{entry['Store']:<6} {entry['Date']:<10} {entry['Time']:<8} {entry['Type']:<5} {entry['Receipt']:<10} {entry['Clerk'][:20]:<20} "
+                            f"{entry['Channel'][:20]:<20} {entry['Sale Type'][:10]:<10} {entry['Units']:>5} {entry['Order Source'][:20]:<20} "
+                            f"{entry['Delivery Provider'][:15]:<15} {entry['Delivery Partner'][:15]:<15} ${entry['Total']:>9.2f} ${entry['Net Total']:>9.2f} ${entry['Tax']:>8.2f}")
                 if not has_txn:
                     log("No transactions for this store.")
+                log("─" * 120, "sep")
 
             # Log store summaries
             log("", None)
             log("Store Summaries", "title")
-            log(hdr, "heading")
+            log("─" * 75, "sep")
+            log(hdr_sum, "heading")
             log("─" * 75, "sep")
             for sid in selected_stores:
                 ss = store_summary.get(sid, {"total_sales": 0.0, "total_net": 0.0, "total_tax": 0.0, "total_units": 0, "total_txns": 0, 
@@ -768,6 +701,7 @@ def run(window):
                 log(f"{sid:<6} {ss['total_sales']:>10.2f} {ss['total_net']:>8.2f} {ss['total_tax']:>8.2f} {ss['total_units']:>8} {ss['total_txns']:>8} "
                     f"{ss['eatin']:>5} {ss['togo']:>5} {ss['delivery']:>5} {ss['avg_tx']:>8.2f} {ss['void_count']:>5} {ss['void_total']:>8.2f} "
                     f"{ss['refund_count']:>6} {ss['refund_total']:>8.2f}")
+            log("─" * 75, "sep")
 
             # Fetch daily breakdown per store
             days = [start + timedelta(days=x) for x in range((end - start).days + 1)]
@@ -870,7 +804,7 @@ def run(window):
                     log("", None)
                     log(f"Per-Day Transaction Summary ({dstr})", "title")
                     log("─" * 75, "sep")
-                    log(hdr, "heading")
+                    log(hdr_sum, "heading")
                     log("─" * 75, "sep")
                     for sid in selected_stores:
                         found = False
@@ -907,22 +841,27 @@ def run(window):
             # Log void/refund summary
             log("", None)
             log("Void/Refund Summary", "title")
-            hdr_vr = f"{'Store':<6} {'Void #':>6} {'Void $':>8} {'Refund #':>8} {'Refund $':>8}"
-            log(hdr_vr, "heading")
+            log("─" * 37, "sep")
+            log(f"{'Store':<6} {'Void #':>6} {'Void $':>8} {'Refund #':>8} {'Refund $':>8}", "heading")
             log("─" * 37, "sep")
             for sid in selected_stores:
                 ss = store_summary.get(sid, {"void_count": 0, "void_total": 0.0, "refund_count": 0, "refund_total": 0.0})
                 log(f"{sid:<6} {ss['void_count']:>6} {ss['void_total']:>8.2f} {ss['refund_count']:>8} {ss['refund_total']:>8.2f}")
+            log("─" * 37, "sep")
 
             # Log voided/refunded transactions
             log("", None)
             log("Voided/Refunded Transactions", "title")
-            hdr_vrt = f"{'Store':<6} {'Date':<10} {'Time':<8} {'Type':<5} {'Receipt #':<9} {'Clerk':<15} {'Amount $':>8}"
-            log(hdr_vrt, "heading")
+            log("─" * 63, "sep")
+            log(f"{'Store':<6} {'Date':<10} {'Time':<8} {'Type':<5} {'Receipt #':<9} {'Clerk':<15} {'Amount $':>8}", "heading")
             log("─" * 63, "sep")
             vr_list = [entry for entry in transactions_data if entry["Type"].lower() in ["void", "refund"]]
-            for entry in sorted(vr_list, key=lambda x: (x["Store"], x["Date"], x["Time"])):
-                log(f"{entry['Store']:<6} {entry['Date']:<10} {entry['Time']:<8} {entry['Type']:<5} {entry['Receipt']:<9} {entry['Clerk'][:15]:<15} {entry['Total']:>8.2f}")
+            if vr_list:
+                for entry in sorted(vr_list, key=lambda x: (x["Store"], x["Date"], x["Time"])):
+                    log(f"{entry['Store']:<6} {entry['Date']:<10} {entry['Time']:<8} {entry['Type']:<5} {entry['Receipt']:<9} {entry['Clerk'][:15]:<15} {entry['Total']:>8.2f}")
+            else:
+                log("No voided or refunded transactions.")
+            log("─" * 63, "sep")
 
             # Clean up
             idx = txt.search("Fetching data for ", "1.0", tk.END)
