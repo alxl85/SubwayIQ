@@ -1,5 +1,8 @@
-tkcalendar
-tenacity
-requests
-pywin32
-pillow
+cryptography==43.0.1
+Pillow==10.4.0
+pyinstaller==6.9.0
+pywin32==306
+requests==2.32.3
+reportlab==4.2.0
+tenacity==8.5.0
+tkcalendar==1.6.1
