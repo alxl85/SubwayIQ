@@ -47,14 +47,30 @@
 
 ## Why This Exists
 
-Running multiple Subway® stores typically means juggling multiple LiveIQ logins and exporting clumsy CSVs one account at a time. **SubwayIQ** connects directly to the **LiveIQ Franchisee API**, consolidates all of your accounts and stores into a single interface, and gives you:
+If you operate more than one Subway® restaurant you already know the drill:
 
-* Fast JSON inspection of any supported API endpoint.
-* Clean, printable, exportable reports (CSV / JSON / TXT / PDF\*).
-* A plug‑in style **modules/** folder where each Python file becomes a report button.
-* Encrypted credentials storage (`config.dat`).
+* The **LiveIQ website** only lets you export one CSV at a time, one store at a time. Forget a field? Start over.
+* The **corporate reporting portal** (formerly Partners/SubwayPartners.com) is even slower, forces you through eight drop‑downs, and times out after a coffee break.
+* The **Franchisee API** is completely undocumented, returns 500s for fun, and rate‑limits you to about 60 requests per minute.
+* Schema changes appear without notice (`netSale` → `netSales`, `pluDescription` disappears, etc.).
+* Each 'account' (ClientID/ClientKEY) sees its own set of stores, so multi‑entity operators have to repeat the process N times.
 
-<sub>\*PDF export available when `reportlab` is installed.</sub>
+That leaves most franchisees with a grim choice:
+
+1. **Spreadsheet hell** – export, copy‑paste, vlookup, pray.
+2. **Pay a SaaS vendor** – spend hundreds per month for basic roll‑ups.
+3. **Write your own scripts** – fight TLS, pagination, throttles, encryption.
+
+**SubwayIQ** does the third option *once*, in open‑source form, so everyone can skip options 1 and 2.
+
+What it adds on top of the raw API:
+
+* Parallel requests with smart back‑off so a 30‑store, 30‑day report finishes in seconds.
+* A desktop UI where you can *see* the JSON before you trust the totals.
+* Plugin architecture – every `.py` file in `modules/` becomes a button; ship your own KPIs without touching the core.
+* End‑to‑end encryption: credentials, e‑mail targets and preferences live inside a Fernet‑encrypted `config.dat`. Lose the password and the file is gibberish.
+
+<sub>\*PDF export requires the optional `reportlab` library.</sub>
 
 ---
 
