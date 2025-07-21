@@ -478,8 +478,6 @@ def run(window):
 
             # Start report
             log(f"3rd-Party Sales Report: {start_date_str} to {end_date_str}", "title")
-            log(f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", "sep")
-            log(f"Stores: {', '.join(selected_stores)}", "sep")
             log(f"Fetching data for {len(store_map)} stores...", "sep")
             log("", None)
 
