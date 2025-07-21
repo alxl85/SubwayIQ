@@ -2,8 +2,8 @@ import string
 import threading
 import tkinter as tk
 from tkinter.scrolledtext import ScrolledText
-from tkinter import messagebox, simpledialog, filedialog, Toplevel, StringVar
-from datetime import datetime, timedelta
+from tkinter import messagebox, filedialog, Toplevel, StringVar
+from datetime import datetime, date, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import tempfile
 import win32print
@@ -42,45 +42,64 @@ def generate_unique_filename(ext):
         if not os.path.exists(fname):
             return fname
 
-def create_toolbar(window, txt, title, tp_data, store_summary, daily_breakdown, start_date, end_date, selected_stores):
-    """Create revamped toolbar with Export .PDF/.JSON/.TXT/.CSV, Email, Print, Copy."""
-    toolbar = tk.Frame(window, bg="#f0f0f0")
-    toolbar.pack(fill="x", pady=(8, 0), padx=8)
-    copy_btn = tk.Button(toolbar, text="Copy", state=tk.DISABLED, bg="#005228", fg="#ecc10c", font=("Arial", 10))
-    copy_btn.pack(side="right", padx=4)
-    print_btn = tk.Button(toolbar, text="Print", state=tk.DISABLED, bg="#005228", fg="#ecc10c", font=("Arial", 10))
-    print_btn.pack(side="right", padx=4)
-    email_btn = tk.Button(toolbar, text="Email", state=tk.DISABLED, bg="#005228", fg="#ecc10c", font=("Arial", 10),
-                          command=lambda: open_email_dialog(window, txt, tp_data, store_summary, daily_breakdown, title, start_date, end_date, selected_stores))
-    email_btn.pack(side="right", padx=4)
-    csv_btn = tk.Button(toolbar, text="Export .CSV", state=tk.DISABLED, bg="#005228", fg="#ecc10c", font=("Arial", 10))
-    csv_btn.pack(side="right", padx=4)
-    txt_btn = tk.Button(toolbar, text="Export .TXT", state=tk.DISABLED, bg="#005228", fg="#ecc10c", font=("Arial", 10))
-    txt_btn.pack(side="right", padx=4)
-    json_btn = tk.Button(toolbar, text="Export .JSON", state=tk.DISABLED, bg="#005228", fg="#ecc10c", font=("Arial", 10))
-    json_btn.pack(side="right", padx=4)
-    pdf_btn = tk.Button(toolbar, text="Export .PDF", state=tk.DISABLED, bg="#005228", fg="#ecc10c", font=("Arial", 10))
-    pdf_btn.pack(side="right", padx=4)
-
-    def enable_toolbar():
-        copy_btn.config(state=tk.NORMAL, command=lambda: (
-            window.clipboard_clear(),
-            window.clipboard_append(txt.get("1.0", "end-1c"))
-        ))
-        print_btn.config(state=tk.NORMAL, command=print_content)
-        email_btn.config(state=tk.NORMAL)
-        csv_btn.config(state=tk.NORMAL, command=lambda: export_file("CSV"))
-        txt_btn.config(state=tk.NORMAL, command=lambda: export_file("TXT"))
-        json_btn.config(state=tk.NORMAL, command=lambda: export_file("JSON"))
-        if REPORTLAB_AVAILABLE:
-            pdf_btn.config(state=tk.NORMAL, command=lambda: export_file("PDF"))
-
-    def print_content():
+def export_file(fmt, window, txt, tp_data, daily_breakdown, title, start_date, end_date, selected_stores):
+    """Export report to specified format (PDF, JSON, CSV, TXT)."""
+    fname = generate_unique_filename(fmt)
+    is_single_day = start_date == end_date
+    if fmt == "CSV":
+        with open(fname, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow([title])
+            writer.writerow(["Generated on", datetime.now().strftime('%Y-%m-%d %H:%M:%S')])
+            writer.writerow(["Date Range", f"{start_date} to {end_date}"])
+            writer.writerow(["Stores", ', '.join(selected_stores)])
+            writer.writerow([])
+            writer.writerow(["Third-Party Summary"])
+            writer.writerow(["Store", "TotSales", "TotNet", "TotTxns", "DD-T", "DD-N", "DD-S", "GH-T", "GH-N", "GH-S", "UE-T", "UE-N", "UE-S", "EC-T", "EC-N", "EC-S"])
+            for sid in selected_stores:
+                for entry in tp_data:
+                    if entry["Store"] == sid:
+                        writer.writerow([entry["Store"], f"{entry['TotSales']:.2f}", f"{entry['TotNet']:.2f}", 
+                                        entry["TotTxns"], entry["DD-T"], f"{entry['DD-N']:.2f}", f"{entry['DD-S']:.2f}", 
+                                        entry["GH-T"], f"{entry['GH-N']:.2f}", f"{entry['GH-S']:.2f}", 
+                                        entry["UE-T"], f"{entry['UE-N']:.2f}", f"{entry['UE-S']:.2f}", 
+                                        entry["EC-T"], f"{entry['EC-N']:.2f}", f"{entry['EC-S']:.2f}"])
+            if not is_single_day:
+                writer.writerow([])
+                writer.writerow(["Daily Breakdown"])
+                writer.writerow(["Date", "Store", "TotSales", "TotNet", "TotTxns", "DD-T", "DD-N", "DD-S", "GH-T", "GH-N", "GH-S", "UE-T", "UE-N", "UE-S", "EC-T", "EC-N", "EC-S"])
+                for date in sorted(daily_breakdown):
+                    for sid in selected_stores:
+                        for entry in daily_breakdown[date]:
+                            if entry["Store"] == sid:
+                                writer.writerow([date, entry["Store"], f"{entry['TotSales']:.2f}", f"{entry['TotNet']:.2f}", 
+                                                entry["TotTxns"], entry["DD-T"], f"{entry['DD-N']:.2f}", f"{entry['DD-S']:.2f}", 
+                                                entry["GH-T"], f"{entry['GH-N']:.2f}", f"{entry['GH-S']:.2f}", 
+                                                entry["UE-T"], f"{entry['UE-N']:.2f}", f"{entry['UE-S']:.2f}", 
+                                                entry["EC-T"], f"{entry['EC-N']:.2f}", f"{entry['EC-S']:.2f}"])
+    elif fmt == "JSON":
+        export_data = {
+            "generated_on": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            "date_range": f"{start_date} to {end_date}",
+            "stores": selected_stores,
+            "third_party_summary": [entry for sid in selected_stores for entry in tp_data if entry["Store"] == sid]
+        }
+        if not is_single_day:
+            export_data["daily_breakdown"] = {date: [entry for sid in selected_stores for entry in entries if entry["Store"] == sid] 
+                                             for date, entries in sorted(daily_breakdown.items())}
+        with open(fname, "w", encoding="utf-8") as f:
+            json.dump(export_data, f, indent=2)
+    elif fmt == "TXT":
+        data = txt.get("1.0", "end-1c")
+        with open(fname, "w", encoding="utf-8") as f:
+            f.write(f"3rd-Party Sales Report: {start_date} to {end_date}\n")
+            f.write(f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Stores: {', '.join(selected_stores)}\n\n")
+            f.write(data)
+    elif fmt == "PDF":
         if not REPORTLAB_AVAILABLE:
-            messagebox.showerror("PDF Error", "reportlab not available. Cannot print PDF.", parent=window)
+            messagebox.showerror("PDF Error", "reportlab not available.", parent=window)
             return
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tf:
-            fname = tf.name
         try:
             doc = SimpleDocTemplate(fname, pagesize=letter)
             styles = getSampleStyleSheet()
@@ -92,116 +111,72 @@ def create_toolbar(window, txt, title, tp_data, store_summary, daily_breakdown, 
             elements.append(Spacer(1, 12))
             elements.append(Paragraph(f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles["Normal"]))
             elements.append(Paragraph(f"Date Range: {start_date} to {end_date}", styles["Normal"]))
-            elements.append(Paragraph(f"Stores: {', '.join(sorted(selected_stores))}", styles["Normal"]))
+            elements.append(Paragraph(f"Stores: {', '.join(selected_stores)}", styles["Normal"]))
             elements.append(Spacer(1, 12))
-            elements.append(Paragraph("Individual Entries", styles["Heading2"]))
-            for entry in tp_data:
-                text = f"Store: {entry['Store']}<br/>TotSales: {entry['TotSales']:.2f}<br/>TotNet: {entry['TotNet']:.2f}<br/>TotTxns: {entry['TotTxns']}<br/>DD-T: {entry['DD-T']}<br/>DD-N: {entry['DD-N']:.2f}<br/>DD-S: {entry['DD-S']:.2f}<br/>GH-T: {entry['GH-T']}<br/>GH-N: {entry['GH-N']:.2f}<br/>GH-S: {entry['GH-S']:.2f}<br/>UE-T: {entry['UE-T']}<br/>UE-N: {entry['UE-N']:.2f}<br/>UE-S: {entry['UE-S']:.2f}<br/>EC-T: {entry['EC-T']}<br/>EC-N: {entry['EC-N']:.2f}<br/>EC-S: {entry['EC-S']:.2f}<br/>"
-                elements.append(Paragraph(text, style))
-                elements.append(Spacer(1, 12))
-            elements.append(Paragraph("Store Summary", styles["Heading2"]))
-            for ss in store_summary.values():
-                text = f"Store: {ss['Store']}<br/>TotSales: {ss['TotSales']:.2f}<br/>TotNet: {ss['TotNet']:.2f}<br/>TotTxns: {ss['TotTxns']}<br/>DD-T: {ss['DD-T']}<br/>DD-N: {ss['DD-N']:.2f}<br/>DD-S: {ss['DD-S']:.2f}<br/>GH-T: {ss['GH-T']}<br/>GH-N: {ss['GH-N']:.2f}<br/>GH-S: {ss['GH-S']:.2f}<br/>UE-T: {ss['UE-T']}<br/>UE-N: {ss['UE-N']:.2f}<br/>UE-S: {ss['UE-S']:.2f}<br/>EC-T: {ss['EC-T']}<br/>EC-N: {ss['EC-N']:.2f}<br/>EC-S: {ss['EC-S']:.2f}<br/>"
-                elements.append(Paragraph(text, style))
-                elements.append(Spacer(1, 12))
-            elements.append(Paragraph("Daily Breakdown", styles["Heading2"]))
-            for date, entries in daily_breakdown.items():
-                elements.append(Paragraph(f"Date: {date}", styles["Heading3"]))
-                for entry in entries:
-                    text = f"Store: {entry['Store']}<br/>TotSales: {entry['TotSales']:.2f}<br/>TotNet: {entry['TotNet']:.2f}<br/>TotTxns: {entry['TotTxns']}<br/>DD-T: {entry['DD-T']}<br/>DD-N: {entry['DD-N']:.2f}<br/>DD-S: {entry['DD-S']:.2f}<br/>GH-T: {entry['GH-T']}<br/>GH-N: {entry['GH-N']:.2f}<br/>GH-S: {entry['GH-S']:.2f}<br/>UE-T: {entry['UE-T']}<br/>UE-N: {entry['UE-N']:.2f}<br/>UE-S: {entry['UE-S']:.2f}<br/>EC-T: {entry['EC-T']}<br/>EC-N: {entry['EC-N']:.2f}<br/>EC-S: {entry['EC-S']:.2f}<br/>"
-                    elements.append(Paragraph(text, style))
-                    elements.append(Spacer(1, 12))
-            doc.build(elements)
-            os.startfile(fname, "print")
-        except Exception as e:
-            messagebox.showerror("Print Error", f"Failed to generate/print PDF: {e}", parent=window)
-        finally:
-            if os.path.exists(fname):
-                os.unlink(fname)
-
-    def export_file(fmt):
-        fname = generate_unique_filename(fmt)
-        if fmt == "CSV":
-            with open(fname, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=["Store", "TotSales", "TotNet", "TotTxns", "DD-T", "DD-N", "DD-S", "GH-T", "GH-N", "GH-S", "UE-T", "UE-N", "UE-S", "EC-T", "EC-N", "EC-S"])
-                writer.writeheader()
-                writer.writerows(tp_data)
-                f.write("\nStore Summary\n")
-                store_writer = csv.DictWriter(f, fieldnames=["Store", "TotSales", "TotNet", "TotTxns", "DD-T", "DD-N", "DD-S", "GH-T", "GH-N", "GH-S", "UE-T", "UE-N", "UE-S", "EC-T", "EC-N", "EC-S"])
-                store_writer.writeheader()
-                for sid, ss in store_summary.items():
-                    store_writer.writerow(ss)
-                f.write("\nDaily Breakdown\n")
-                daily_writer = csv.DictWriter(f, fieldnames=["Date", "Store", "TotSales", "TotNet", "TotTxns", "DD-T", "DD-N", "DD-S", "GH-T", "GH-N", "GH-S", "UE-T", "UE-N", "UE-S", "EC-T", "EC-N", "EC-S"])
-                daily_writer.writeheader()
-                for date in sorted(daily_breakdown):
-                    for entry in daily_breakdown[date]:
-                        entry["Date"] = date
-                        daily_writer.writerow(entry)
-        elif fmt == "JSON":
-            export_data = {
-                "entries": tp_data,
-                "store_summary": [ss for ss in store_summary.values()],
-                "daily_breakdown": {date: entries for date, entries in daily_breakdown.items()}
-            }
-            with open(fname, "w", encoding="utf-8") as f:
-                json.dump(export_data, f, indent=2)
-        elif fmt == "TXT":
-            data = txt.get("1.0", "end-1c")
-            with open(fname, "w", encoding="utf-8") as f:
-                f.write(data)
-        elif fmt == "PDF":
-            if not REPORTLAB_AVAILABLE:
-                messagebox.showerror("PDF Error", "reportlab not available.", parent=window)
-                return
-            try:
-                doc = SimpleDocTemplate(fname, pagesize=letter)
-                styles = getSampleStyleSheet()
-                style = styles["Normal"]
-                style.fontName = "Courier"
-                style.fontSize = 10
-                elements = []
-                elements.append(Paragraph(title, styles["Title"]))
-                elements.append(Spacer(1, 12))
-                elements.append(Paragraph(f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles["Normal"]))
-                elements.append(Paragraph(f"Date Range: {start_date} to {end_date}", styles["Normal"]))
-                elements.append(Paragraph(f"Stores: {', '.join(sorted(selected_stores))}", styles["Normal"]))
-                elements.append(Spacer(1, 12))
-                elements.append(Paragraph("Individual Entries", styles["Heading2"]))
+            elements.append(Paragraph("Third-Party Summary", styles["Heading2"]))
+            for sid in selected_stores:
                 for entry in tp_data:
-                    text = f"Store: {entry['Store']}<br/>TotSales: {entry['TotSales']:.2f}<br/>TotNet: {entry['TotNet']:.2f}<br/>TotTxns: {entry['TotTxns']}<br/>DD-T: {entry['DD-T']}<br/>DD-N: {entry['DD-N']:.2f}<br/>DD-S: {entry['DD-S']:.2f}<br/>GH-T: {entry['GH-T']}<br/>GH-N: {entry['GH-N']:.2f}<br/>GH-S: {entry['GH-S']:.2f}<br/>UE-T: {entry['UE-T']}<br/>UE-N: {entry['UE-N']:.2f}<br/>UE-S: {entry['UE-S']:.2f}<br/>EC-T: {entry['EC-T']}<br/>EC-N: {entry['EC-N']:.2f}<br/>EC-S: {entry['EC-S']:.2f}<br/>"
-                    elements.append(Paragraph(text, style))
-                    elements.append(Spacer(1, 12))
-                elements.append(Paragraph("Store Summary", styles["Heading2"]))
-                for ss in store_summary.values():
-                    text = f"Store: {ss['Store']}<br/>TotSales: {ss['TotSales']:.2f}<br/>TotNet: {ss['TotNet']:.2f}<br/>TotTxns: {ss['TotTxns']}<br/>DD-T: {ss['DD-T']}<br/>DD-N: {ss['DD-N']:.2f}<br/>DD-S: {ss['DD-S']:.2f}<br/>GH-T: {ss['GH-T']}<br/>GH-N: {ss['GH-N']:.2f}<br/>GH-S: {ss['GH-S']:.2f}<br/>UE-T: {ss['UE-T']}<br/>UE-N: {ss['UE-N']:.2f}<br/>UE-S: {ss['UE-S']:.2f}<br/>EC-T: {ss['EC-T']}<br/>EC-N: {ss['EC-N']:.2f}<br/>EC-S: {ss['EC-S']:.2f}<br/>"
-                    elements.append(Paragraph(text, style))
-                    elements.append(Spacer(1, 12))
-                elements.append(Paragraph("Daily Breakdown", styles["Heading2"]))
-                for date, entries in daily_breakdown.items():
-                    elements.append(Paragraph(f"Date: {date}", styles["Heading3"]))
-                    for entry in entries:
-                        text = f"Store: {entry['Store']}<br/>TotSales: {entry['TotSales']:.2f}<br/>TotNet: {entry['TotNet']:.2f}<br/>TotTxns: {entry['TotTxns']}<br/>DD-T: {entry['DD-T']}<br/>DD-N: {entry['DD-N']:.2f}<br/>DD-S: {entry['DD-S']:.2f}<br/>GH-T: {entry['GH-T']}<br/>GH-N: {entry['GH-N']:.2f}<br/>GH-S: {entry['GH-S']:.2f}<br/>UE-T: {entry['UE-T']}<br/>UE-N: {entry['UE-N']:.2f}<br/>UE-S: {entry['UE-S']:.2f}<br/>EC-T: {entry['EC-T']}<br/>EC-N: {entry['EC-N']:.2f}<br/>EC-S: {entry['EC-S']:.2f}<br/>"
+                    if entry["Store"] == sid:
+                        text = (f"Store: {entry['Store']:<6}<br/>"
+                                f"TotSales: ${entry['TotSales']:>10.2f}<br/>"
+                                f"TotNet: ${entry['TotNet']:>8.2f}<br/>"
+                                f"TotTxns: {entry['TotTxns']:>5}<br/>"
+                                f"DD-T: {entry['DD-T']:>5}<br/>"
+                                f"DD-N: ${entry['DD-N']:>8.2f}<br/>"
+                                f"DD-S: ${entry['DD-S']:>8.2f}<br/>"
+                                f"GH-T: {entry['GH-T']:>5}<br/>"
+                                f"GH-N: ${entry['GH-N']:>8.2f}<br/>"
+                                f"GH-S: ${entry['GH-S']:>8.2f}<br/>"
+                                f"UE-T: {entry['UE-T']:>5}<br/>"
+                                f"UE-N: ${entry['UE-N']:>8.2f}<br/>"
+                                f"UE-S: ${entry['UE-S']:>8.2f}<br/>"
+                                f"EC-T: {entry['EC-T']:>5}<br/>"
+                                f"EC-N: ${entry['EC-N']:>8.2f}<br/>"
+                                f"EC-S: ${entry['EC-S']:>8.2f}<br/>")
                         elements.append(Paragraph(text, style))
                         elements.append(Spacer(1, 12))
-                doc.build(elements)
-            except Exception as e:
-                messagebox.showerror("PDF Error", f"Failed to generate PDF: {e}", parent=window)
-                return
-        try:
-            os.startfile(fname)
+            if not is_single_day:
+                elements.append(Paragraph("Daily Breakdown", styles["Heading2"]))
+                for date in sorted(daily_breakdown):
+                    elements.append(Paragraph(f"Date: {date}", styles["Heading3"]))
+                    for sid in selected_stores:
+                        for entry in daily_breakdown[date]:
+                            if entry["Store"] == sid:
+                                text = (f"Store: {entry['Store']:<6}<br/>"
+                                        f"TotSales: ${entry['TotSales']:>10.2f}<br/>"
+                                        f"TotNet: ${entry['TotNet']:>8.2f}<br/>"
+                                        f"TotTxns: {entry['TotTxns']:>5}<br/>"
+                                        f"DD-T: {entry['DD-T']:>5}<br/>"
+                                        f"DD-N: ${entry['DD-N']:>8.2f}<br/>"
+                                        f"DD-S: ${entry['DD-S']:>8.2f}<br/>"
+                                        f"GH-T: {entry['GH-T']:>5}<br/>"
+                                        f"GH-N: ${entry['GH-N']:>8.2f}<br/>"
+                                        f"GH-S: ${entry['GH-S']:>8.2f}<br/>"
+                                        f"UE-T: {entry['UE-T']:>5}<br/>"
+                                        f"UE-N: ${entry['UE-N']:>8.2f}<br/>"
+                                        f"UE-S: ${entry['UE-S']:>8.2f}<br/>"
+                                        f"EC-T: {entry['EC-T']:>5}<br/>"
+                                        f"EC-N: ${entry['EC-N']:>8.2f}<br/>"
+                                        f"EC-S: ${entry['EC-S']:>8.2f}<br/>")
+                                elements.append(Paragraph(text, style))
+                                elements.append(Spacer(1, 12))
+            doc.build(elements)
         except Exception as e:
-            if fmt == "JSON":
-                try:
-                    subprocess.call([r'C:\Windows\System32\notepad.exe', fname])
-                    messagebox.showinfo("Opened", f"JSON opened in Notepad: {fname}.", parent=window)
-                except Exception as sub_e:
-                    messagebox.showerror("Open Error", f"Failed to open {fname} in Notepad: {sub_e}. File saved.", parent=window)
-            else:
-                messagebox.showinfo("Open Info", f"File saved to {fname}. Open manually (error: {e}).", parent=window)
-    return enable_toolbar
+            messagebox.showerror("PDF Error", f"Failed to generate PDF: {e}", parent=window)
+            return
+    try:
+        os.startfile(fname)
+    except Exception as e:
+        if fmt == "JSON":
+            try:
+                subprocess.call([r'C:\Windows\System32\notepad.exe', fname])
+                messagebox.showinfo("Opened", f"JSON opened in Notepad: {fname}.", parent=window)
+            except Exception as e2:
+                messagebox.showerror("Open Error", f"Failed to open {fname} in Notepad: {e2}. File saved.", parent=window)
+        else:
+            messagebox.showinfo("Open Info", f"File saved to {fname}. Open manually (error: {e}).", parent=window)
 
-def open_email_dialog(window, txt, tp_data, store_summary, daily_breakdown, title, start_date, end_date, selected_stores):
+def open_email_dialog(window, txt, tp_data, daily_breakdown, title, start_date, end_date, selected_stores, config_emails, config_smtp):
     """Open dialog to select emails, format, and send report as attachment via mailto or SMTP."""
     if not config_emails:
         messagebox.showwarning("No Emails", "No emails configured. Add via Emails button.", parent=window)
@@ -239,84 +214,14 @@ def open_email_dialog(window, txt, tp_data, store_summary, daily_breakdown, titl
             messagebox.showwarning("No Selection", "Select at least one email.", parent=dialog)
             return
         fmt = format_var.get()
+        export_file(fmt, dialog, txt, tp_data, daily_breakdown, title, start_date, end_date, selected_stores)
         fname = generate_unique_filename(fmt)
-        # Generate file content
-        if fmt == "CSV":
-            with open(fname, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=["Store", "TotSales", "TotNet", "TotTxns", "DD-T", "DD-N", "DD-S", "GH-T", "GH-N", "GH-S", "UE-T", "UE-N", "UE-S", "EC-T", "EC-N", "EC-S"])
-                writer.writeheader()
-                writer.writerows(tp_data)
-                f.write("\nStore Summary\n")
-                store_writer = csv.DictWriter(f, fieldnames=["Store", "TotSales", "TotNet", "TotTxns", "DD-T", "DD-N", "DD-S", "GH-T", "GH-N", "GH-S", "UE-T", "UE-N", "UE-S", "EC-T", "EC-N", "EC-S"])
-                store_writer.writeheader()
-                for sid, ss in store_summary.items():
-                    store_writer.writerow(ss)
-                f.write("\nDaily Breakdown\n")
-                daily_writer = csv.DictWriter(f, fieldnames=["Date", "Store", "TotSales", "TotNet", "TotTxns", "DD-T", "DD-N", "DD-S", "GH-T", "GH-N", "GH-S", "UE-T", "UE-N", "UE-S", "EC-T", "EC-N", "EC-S"])
-                daily_writer.writeheader()
-                for date in sorted(daily_breakdown):
-                    for entry in daily_breakdown[date]:
-                        entry["Date"] = date
-                        daily_writer.writerow(entry)
-        elif fmt == "JSON":
-            export_data = {
-                "entries": tp_data,
-                "store_summary": [ss for ss in store_summary.values()],
-                "daily_breakdown": {date: entries for date, entries in daily_breakdown.items()}
-            }
-            with open(fname, "w", encoding="utf-8") as f:
-                json.dump(export_data, f, indent=2)
-        elif fmt == "TXT":
-            data = txt.get("1.0", "end-1c")
-            with open(fname, "w", encoding="utf-8") as f:
-                f.write(data)
-        elif fmt == "PDF":
-            if not REPORTLAB_AVAILABLE:
-                messagebox.showerror("PDF Error", "reportlab not available.", parent=dialog)
-                return
-            try:
-                doc = SimpleDocTemplate(fname, pagesize=letter)
-                styles = getSampleStyleSheet()
-                style = styles["Normal"]
-                style.fontName = "Courier"
-                style.fontSize = 10
-                elements = []
-                elements.append(Paragraph(title, styles["Title"]))
-                elements.append(Spacer(1, 12))
-                elements.append(Paragraph(f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles["Normal"]))
-                elements.append(Paragraph(f"Date Range: {start_date} to {end_date}", styles["Normal"]))
-                elements.append(Paragraph(f"Stores: {', '.join(sorted(selected_stores))}", styles["Normal"]))
-                elements.append(Spacer(1, 12))
-                elements.append(Paragraph("Individual Entries", styles["Heading2"]))
-                for entry in tp_data:
-                    text = f"Store: {entry['Store']}<br/>TotSales: {entry['TotSales']:.2f}<br/>TotNet: {entry['TotNet']:.2f}<br/>TotTxns: {entry['TotTxns']}<br/>DD-T: {entry['DD-T']}<br/>DD-N: {entry['DD-N']:.2f}<br/>DD-S: {entry['DD-S']:.2f}<br/>GH-T: {entry['GH-T']}<br/>GH-N: {entry['GH-N']:.2f}<br/>GH-S: {entry['GH-S']:.2f}<br/>UE-T: {entry['UE-T']}<br/>UE-N: {entry['UE-N']:.2f}<br/>UE-S: {entry['UE-S']:.2f}<br/>EC-T: {entry['EC-T']}<br/>EC-N: {entry['EC-N']:.2f}<br/>EC-S: {entry['EC-S']:.2f}<br/>"
-                    elements.append(Paragraph(text, style))
-                    elements.append(Spacer(1, 12))
-                elements.append(Paragraph("Store Summary", styles["Heading2"]))
-                for ss in store_summary.values():
-                    text = f"Store: {ss['Store']}<br/>TotSales: {ss['TotSales']:.2f}<br/>TotNet: {ss['TotNet']:.2f}<br/>TotTxns: {ss['TotTxns']}<br/>DD-T: {ss['DD-T']}<br/>DD-N: {ss['DD-N']:.2f}<br/>DD-S: {ss['DD-S']:.2f}<br/>GH-T: {ss['GH-T']}<br/>GH-N: {ss['GH-N']:.2f}<br/>GH-S: {ss['GH-S']:.2f}<br/>UE-T: {ss['UE-T']}<br/>UE-N: {ss['UE-N']:.2f}<br/>UE-S: {ss['UE-S']:.2f}<br/>EC-T: {ss['EC-T']}<br/>EC-N: {ss['EC-N']:.2f}<br/>EC-S: {ss['EC-S']:.2f}<br/>"
-                    elements.append(Paragraph(text, style))
-                    elements.append(Spacer(1, 12))
-                elements.append(Paragraph("Daily Breakdown", styles["Heading2"]))
-                for date, entries in daily_breakdown.items():
-                    elements.append(Paragraph(f"Date: {date}", styles["Heading3"]))
-                    for entry in entries:
-                        text = f"Store: {entry['Store']}<br/>TotSales: {entry['TotSales']:.2f}<br/>TotNet: {entry['TotNet']:.2f}<br/>TotTxns: {entry['TotTxns']}<br/>DD-T: {entry['DD-T']}<br/>DD-N: {entry['DD-N']:.2f}<br/>DD-S: {entry['DD-S']:.2f}<br/>GH-T: {entry['GH-T']}<br/>GH-N: {entry['GH-N']:.2f}<br/>GH-S: {entry['GH-S']:.2f}<br/>UE-T: {entry['UE-T']}<br/>UE-N: {entry['UE-N']:.2f}<br/>UE-S: {entry['UE-S']:.2f}<br/>EC-T: {entry['EC-T']}<br/>EC-N: {entry['EC-N']:.2f}<br/>EC-S: {entry['EC-S']:.2f}<br/>"
-                        elements.append(Paragraph(text, style))
-                        elements.append(Spacer(1, 12))
-                doc.build(elements)
-            except Exception as e:
-                messagebox.showerror("PDF Error", f"Failed to generate PDF: {e}", parent=dialog)
-                return
         lines = txt.get("1.0", "end-1c").splitlines()
-        subj = "3rd-Party Report"
-        if lines and "3rd-Party Sales: " in lines[0]:
-            subj += " – " + lines[0].split(": ", 1)[1]
-        subj = urllib.parse.quote(subj)
-        body = urllib.parse.quote("Please see the attached 3rd-party report.")
+        subj = f"3rd-Party Sales Report: {start_date} to {end_date}"
+        body = urllib.parse.quote(f"Please see the attached 3rd-party sales report for {start_date} to {end_date}.")
         to = ",".join(selected)
         messagebox.showinfo("Email Report", f"Attachment saved to {fname}. Attach it manually to your email.", parent=dialog)
-        webbrowser.open(f"mailto:{to}?subject={subj}&body={body}")
+        webbrowser.open(f"mailto:{to}?subject={urllib.parse.quote(subj)}&body={body}")
         dialog.destroy()
 
     def send_now():
@@ -329,263 +234,14 @@ def open_email_dialog(window, txt, tp_data, store_summary, daily_breakdown, titl
             return
         fmt = format_var.get()
         fname = generate_unique_filename(fmt)
-        # Generate file content
-        if fmt == "CSV":
-            with open(fname, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=["Store", "TotSales", "TotNet", "TotTxns", "DD-T", "DD-N", "DD-S", "GH-T", "GH-N", "GH-S", "UE-T", "UE-N", "UE-S", "EC-T", "EC-N", "EC-S"])
-                writer.writeheader()
-                writer.writerows(tp_data)
-                f.write("\nStore Summary\n")
-                store_writer = csv.DictWriter(f, fieldnames=["Store", "TotSales", "TotNet", "TotTxns", "DD-T", "DD-N", "DD-S", "GH-T", "GH-N", "GH-S", "UE-T", "UE-N", "UE-S", "EC-T", "EC-N", "EC-S"])
-                store_writer.writeheader()
-                for sid, ss in store_summary.items():
-                    store_writer.writerow(ss)
-                f.write("\nDaily Breakdown\n")
-                daily_writer = csv.DictWriter(f, fieldnames=["Date", "Store", "TotSales", "TotNet", "TotTxns", "DD-T", "DD-N", "DD-S", "GH-T", "GH-N", "GH-S", "UE-T", "UE-N", "UE-S", "EC-T", "EC-N", "EC-S"])
-                daily_writer.writeheader()
-                for date in sorted(daily_breakdown):
-                    for entry in daily_breakdown[date]:
-                        entry["Date"] = date
-                        daily_writer.writerow(entry)
-        elif fmt == "JSON":
-            export_data = {
-                "entries": tp_data,
-                "store_summary": [ss for ss in store_summary.values()],
-                "daily_breakdown": {date: entries for date, entries in daily_breakdown.items()}
-            }
-            with open(fname, "w", encoding="utf-8") as f:
-                json.dump(export_data, f, indent=2)
-        elif fmt == "TXT":
-            data = txt.get("1.0", "end-1c")
-            with open(fname, "w", encoding="utf-8") as f:
-                f.write(data)
-        elif fmt == "PDF":
-            if not REPORTLAB_AVAILABLE:
-                messagebox.showerror("PDF Error", "reportlab not available.", parent=dialog)
-                return
-            try:
-                doc = SimpleDocTemplate(fname, pagesize=letter)
-                styles = getSampleStyleSheet()
-                style = styles["Normal"]
-                style.fontName = "Courier"
-                style.fontSize = 10
-                elements = []
-                elements.append(Paragraph(title, styles["Title"]))
-                elements.append(Spacer(1, 12))
-                elements.append(Paragraph(f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles["Normal"]))
-                elements.append(Paragraph(f"Date Range: {start_date} to {end_date}", styles["Normal"]))
-                elements.append(Paragraph(f"Stores: {', '.join(sorted(selected_stores))}", styles["Normal"]))
-                elements.append(Spacer(1, 12))
-                elements.append(Paragraph("Individual Entries", styles["Heading2"]))
-                for entry in tp_data:
-                    text = f"Store: {entry['Store']}<br/>TotSales: {entry['TotSales']:.2f}<br/>TotNet: {entry['TotNet']:.2f}<br/>TotTxns: {entry['TotTxns']}<br/>DD-T: {entry['DD-T']}<br/>DD-N: {entry['DD-N']:.2f}<br/>DD-S: {entry['DD-S']:.2f}<br/>GH-T: {entry['GH-T']}<br/>GH-N: {entry['GH-N']:.2f}<br/>GH-S: {entry['GH-S']:.2f}<br/>UE-T: {entry['UE-T']}<br/>UE-N: {entry['UE-N']:.2f}<br/>UE-S: {entry['UE-S']:.2f}<br/>EC-T: {entry['EC-T']}<br/>EC-N: {entry['EC-N']:.2f}<br/>EC-S: {entry['EC-S']:.2f}<br/>"
-                    elements.append(Paragraph(text, style))
-                    elements.append(Spacer(1, 12))
-                elements.append(Paragraph("Store Summary", styles["Heading2"]))
-                for ss in store_summary.values():
-                    text = f"Store: {ss['Store']}<br/>TotSales: {ss['TotSales']:.2f}<br/>TotNet: {ss['TotNet']:.2f}<br/>TotTxns: {ss['TotTxns']}<br/>DD-T: {ss['DD-T']}<br/>DD-N: {ss['DD-N']:.2f}<br/>DD-S: {ss['DD-S']:.2f}<br/>GH-T: {ss['GH-T']}<br/>GH-N: {ss['GH-N']:.2f}<br/>GH-S: {ss['GH-S']:.2f}<br/>UE-T: {ss['UE-T']}<br/>UE-N: {ss['UE-N']:.2f}<br/>UE-S: {ss['UE-S']:.2f}<br/>EC-T: {ss['EC-T']}<br/>EC-N: {ss['EC-N']:.2f}<br/>EC-S: {ss['EC-S']:.2f}<br/>"
-                    elements.append(Paragraph(text, style))
-                    elements.append(Spacer(1, 12))
-                elements.append(Paragraph("Daily Breakdown", styles["Heading2"]))
-                for date, entries in daily_breakdown.items():
-                    elements.append(Paragraph(f"Date: {date}", styles["Heading3"]))
-                    for entry in entries:
-                        text = f"Store: {entry['Store']}<br/>TotSales: {entry['TotSales']:.2f}<br/>TotNet: {entry['TotNet']:.2f}<br/>TotTxns: {entry['TotTxns']}<br/>DD-T: {entry['DD-T']}<br/>DD-N: {entry['DD-N']:.2f}<br/>DD-S: {entry['DD-S']:.2f}<br/>GH-T: {entry['GH-T']}<br/>GH-N: {entry['GH-N']:.2f}<br/>GH-S: {entry['GH-S']:.2f}<br/>UE-T: {entry['UE-T']}<br/>UE-N: {entry['UE-N']:.2f}<br/>UE-S: {entry['UE-S']:.2f}<br/>EC-T: {entry['EC-T']}<br/>EC-N: {entry['EC-N']:.2f}<br/>EC-S: {entry['EC-S']:.2f}<br/>"
-                        elements.append(Paragraph(text, style))
-                        elements.append(Spacer(1, 12))
-                doc.build(elements)
-            except Exception as e:
-                messagebox.showerror("PDF Error", f"Failed to generate PDF: {e}", parent=dialog)
-                return
-        lines = txt.get("1.0", "end-1c").splitlines()
-        subj = "3rd-Party Report"
-        if lines and "3rd-Party Sales: " in lines[0]:
-            subj += " – " + lines[0].split(": ", 1)[1]
-        subj = urllib.parse.quote(subj)
-        body = urllib.parse.quote("Please see the attached 3rd-party report.")
-        to = ",".join(selected)
-        messagebox.showinfo("Email Report", f"Attachment saved to {fname}. Attach it manually to your email.", parent=dialog)
-        webbrowser.open(f"mailto:{to}?subject={subj}&body={body}")
-        dialog.destroy()
-
-    def send_now():
-        if not all(k in config_smtp for k in ["server", "port", "username", "password", "from"]):
-            messagebox.showerror("SMTP Incomplete", "SMTP settings not fully configured.", parent=dialog)
-            return
-        selected = [config_emails[i] for i in listbox.curselection()]
-        if not selected:
-            messagebox.showwarning("No Selection", "Select at least one email.", parent=dialog)
-            return
-        fmt = format_var.get()
-        fname = generate_unique_filename(fmt)
-        # Generate file content
-        if fmt == "CSV":
-            with open(fname, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=["Store", "TotSales", "TotNet", "TotTxns", "DD-T", "DD-N", "DD-S", "GH-T", "GH-N", "GH-S", "UE-T", "UE-N", "UE-S", "EC-T", "EC-N", "EC-S"])
-                writer.writeheader()
-                writer.writerows(tp_data)
-                f.write("\nStore Summary\n")
-                store_writer = csv.DictWriter(f, fieldnames=["Store", "TotSales", "TotNet", "TotTxns", "DD-T", "DD-N", "DD-S", "GH-T", "GH-N", "GH-S", "UE-T", "UE-N", "UE-S", "EC-T", "EC-N", "EC-S"])
-                store_writer.writeheader()
-                for sid, ss in store_summary.items():
-                    store_writer.writerow(ss)
-                f.write("\nDaily Breakdown\n")
-                daily_writer = csv.DictWriter(f, fieldnames=["Date", "Store", "TotSales", "TotNet", "TotTxns", "DD-T", "DD-N", "DD-S", "GH-T", "GH-N", "GH-S", "UE-T", "UE-N", "UE-S", "EC-T", "EC-N", "EC-S"])
-                daily_writer.writeheader()
-                for date in sorted(daily_breakdown):
-                    for entry in daily_breakdown[date]:
-                        entry["Date"] = date
-                        daily_writer.writerow(entry)
-        elif fmt == "JSON":
-            export_data = {
-                "entries": tp_data,
-                "store_summary": [ss for ss in store_summary.values()],
-                "daily_breakdown": {date: entries for date, entries in daily_breakdown.items()}
-            }
-            with open(fname, "w", encoding="utf-8") as f:
-                json.dump(export_data, f, indent=2)
-        elif fmt == "TXT":
-            data = txt.get("1.0", "end-1c")
-            with open(fname, "w", encoding="utf-8") as f:
-                f.write(data)
-        elif fmt == "PDF":
-            if not REPORTLAB_AVAILABLE:
-                messagebox.showerror("PDF Error", "reportlab not available.", parent=dialog)
-                return
-            try:
-                doc = SimpleDocTemplate(fname, pagesize=letter)
-                styles = getSampleStyleSheet()
-                style = styles["Normal"]
-                style.fontName = "Courier"
-                style.fontSize = 10
-                elements = []
-                elements.append(Paragraph(title, styles["Title"]))
-                elements.append(Spacer(1, 12))
-                elements.append(Paragraph(f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles["Normal"]))
-                elements.append(Paragraph(f"Date Range: {start_date} to {end_date}", styles["Normal"]))
-                elements.append(Paragraph(f"Stores: {', '.join(sorted(selected_stores))}", styles["Normal"]))
-                elements.append(Spacer(1, 12))
-                elements.append(Paragraph("Individual Entries", styles["Heading2"]))
-                for entry in tp_data:
-                    text = f"Store: {entry['Store']}<br/>TotSales: {entry['TotSales']:.2f}<br/>TotNet: {entry['TotNet']:.2f}<br/>TotTxns: {entry['TotTxns']}<br/>DD-T: {entry['DD-T']}<br/>DD-N: {entry['DD-N']:.2f}<br/>DD-S: {entry['DD-S']:.2f}<br/>GH-T: {entry['GH-T']}<br/>GH-N: {entry['GH-N']:.2f}<br/>GH-S: {entry['GH-S']:.2f}<br/>UE-T: {entry['UE-T']}<br/>UE-N: {entry['UE-N']:.2f}<br/>UE-S: {entry['UE-S']:.2f}<br/>EC-T: {entry['EC-T']}<br/>EC-N: {entry['EC-N']:.2f}<br/>EC-S: {entry['EC-S']:.2f}<br/>"
-                    elements.append(Paragraph(text, style))
-                    elements.append(Spacer(1, 12))
-                elements.append(Paragraph("Store Summary", styles["Heading2"]))
-                for ss in store_summary.values():
-                    text = f"Store: {ss['Store']}<br/>TotSales: {ss['TotSales']:.2f}<br/>TotNet: {ss['TotNet']:.2f}<br/>TotTxns: {ss['TotTxns']}<br/>DD-T: {ss['DD-T']}<br/>DD-N: {ss['DD-N']:.2f}<br/>DD-S: {ss['DD-S']:.2f}<br/>GH-T: {ss['GH-T']}<br/>GH-N: {ss['GH-N']:.2f}<br/>GH-S: {ss['GH-S']:.2f}<br/>UE-T: {ss['UE-T']}<br/>UE-N: {ss['UE-N']:.2f}<br/>UE-S: {ss['UE-S']:.2f}<br/>EC-T: {ss['EC-T']}<br/>EC-N: {ss['EC-N']:.2f}<br/>EC-S: {ss['EC-S']:.2f}<br/>"
-                    elements.append(Paragraph(text, style))
-                    elements.append(Spacer(1, 12))
-                elements.append(Paragraph("Daily Breakdown", styles["Heading2"]))
-                for date, entries in daily_breakdown.items():
-                    elements.append(Paragraph(f"Date: {date}", styles["Heading3"]))
-                    for entry in entries:
-                        text = f"Store: {entry['Store']}<br/>TotSales: {entry['TotSales']:.2f}<br/>TotNet: {entry['TotNet']:.2f}<br/>TotTxns: {entry['TotTxns']}<br/>DD-T: {entry['DD-T']}<br/>DD-N: {entry['DD-N']:.2f}<br/>DD-S: {entry['DD-S']:.2f}<br/>GH-T: {entry['GH-T']}<br/>GH-N: {entry['GH-N']:.2f}<br/>GH-S: {entry['GH-S']:.2f}<br/>UE-T: {entry['UE-T']}<br/>UE-N: {entry['UE-N']:.2f}<br/>UE-S: {entry['UE-S']:.2f}<br/>EC-T: {entry['EC-T']}<br/>EC-N: {entry['EC-N']:.2f}<br/>EC-S: {entry['EC-S']:.2f}<br/>"
-                        elements.append(Paragraph(text, style))
-                        elements.append(Spacer(1, 12))
-                doc.build(elements)
-            except Exception as e:
-                messagebox.showerror("PDF Error", f"Failed to generate PDF: {e}", parent=dialog)
-                return
-        lines = txt.get("1.0", "end-1c").splitlines()
-        subj = "3rd-Party Report"
-        if lines and "3rd-Party Sales: " in lines[0]:
-            subj += " – " + lines[0].split(": ", 1)[1]
-        subj = urllib.parse.quote(subj)
-        body = urllib.parse.quote("Please see the attached 3rd-party report.")
-        to = ",".join(selected)
-        messagebox.showinfo("Email Report", f"Attachment saved to {fname}. Attach it manually to your email.", parent=dialog)
-        webbrowser.open(f"mailto:{to}?subject={subj}&body={body}")
-        dialog.destroy()
-
-    def send_now():
-        if not all(k in config_smtp for k in ["server", "port", "username", "password", "from"]):
-            messagebox.showerror("SMTP Incomplete", "SMTP settings not fully configured.", parent=dialog)
-            return
-        selected = [config_emails[i] for i in listbox.curselection()]
-        if not selected:
-            messagebox.showwarning("No Selection", "Select at least one email.", parent=dialog)
-            return
-        fmt = format_var.get()
-        fname = generate_unique_filename(fmt)
-        # Generate file content
-        if fmt == "CSV":
-            with open(fname, "w", newline="", encoding="utf-8") as f:
-                writer = csv.DictWriter(f, fieldnames=["Store", "TotSales", "TotNet", "TotTxns", "DD-T", "DD-N", "DD-S", "GH-T", "GH-N", "GH-S", "UE-T", "UE-N", "UE-S", "EC-T", "EC-N", "EC-S"])
-                writer.writeheader()
-                writer.writerows(tp_data)
-                f.write("\nStore Summary\n")
-                store_writer = csv.DictWriter(f, fieldnames=["Store", "TotSales", "TotNet", "TotTxns", "DD-T", "DD-N", "DD-S", "GH-T", "GH-N", "GH-S", "UE-T", "UE-N", "UE-S", "EC-T", "EC-N", "EC-S"])
-                store_writer.writeheader()
-                for sid, ss in store_summary.items():
-                    store_writer.writerow(ss)
-                f.write("\nDaily Breakdown\n")
-                daily_writer = csv.DictWriter(f, fieldnames=["Date", "Store", "TotSales", "TotNet", "TotTxns", "DD-T", "DD-N", "DD-S", "GH-T", "GH-N", "GH-S", "UE-T", "UE-N", "UE-S", "EC-T", "EC-N", "EC-S"])
-                daily_writer.writeheader()
-                for date in sorted(daily_breakdown):
-                    for entry in daily_breakdown[date]:
-                        entry["Date"] = date
-                        daily_writer.writerow(entry)
-        elif fmt == "JSON":
-            export_data = {
-                "entries": tp_data,
-                "store_summary": [ss for ss in store_summary.values()],
-                "daily_breakdown": {date: entries for date, entries in daily_breakdown.items()}
-            }
-            with open(fname, "w", encoding="utf-8") as f:
-                json.dump(export_data, f, indent=2)
-        elif fmt == "TXT":
-            data = txt.get("1.0", "end-1c")
-            with open(fname, "w", encoding="utf-8") as f:
-                f.write(data)
-        elif fmt == "PDF":
-            if not REPORTLAB_AVAILABLE:
-                messagebox.showerror("PDF Error", "reportlab not available.", parent=dialog)
-                return
-            try:
-                doc = SimpleDocTemplate(fname, pagesize=letter)
-                styles = getSampleStyleSheet()
-                style = styles["Normal"]
-                style.fontName = "Courier"
-                style.fontSize = 10
-                elements = []
-                elements.append(Paragraph(title, styles["Title"]))
-                elements.append(Spacer(1, 12))
-                elements.append(Paragraph(f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles["Normal"]))
-                elements.append(Paragraph(f"Date Range: {start_date} to {end_date}", styles["Normal"]))
-                elements.append(Paragraph(f"Stores: {', '.join(sorted(selected_stores))}", styles["Normal"]))
-                elements.append(Spacer(1, 12))
-                elements.append(Paragraph("Individual Entries", styles["Heading2"]))
-                for entry in tp_data:
-                    text = f"Store: {entry['Store']}<br/>TotSales: {entry['TotSales']:.2f}<br/>TotNet: {entry['TotNet']:.2f}<br/>TotTxns: {entry['TotTxns']}<br/>DD-T: {entry['DD-T']}<br/>DD-N: {entry['DD-N']:.2f}<br/>DD-S: {entry['DD-S']:.2f}<br/>GH-T: {entry['GH-T']}<br/>GH-N: {entry['GH-N']:.2f}<br/>GH-S: {entry['GH-S']:.2f}<br/>UE-T: {entry['UE-T']}<br/>UE-N: {entry['UE-N']:.2f}<br/>UE-S: {entry['UE-S']:.2f}<br/>EC-T: {entry['EC-T']}<br/>EC-N: {entry['EC-N']:.2f}<br/>EC-S: {entry['EC-S']:.2f}<br/>"
-                    elements.append(Paragraph(text, style))
-                    elements.append(Spacer(1, 12))
-                elements.append(Paragraph("Store Summary", styles["Heading2"]))
-                for ss in store_summary.values():
-                    text = f"Store: {ss['Store']}<br/>TotSales: {ss['TotSales']:.2f}<br/>TotNet: {ss['TotNet']:.2f}<br/>TotTxns: {ss['TotTxns']}<br/>DD-T: {ss['DD-T']}<br/>DD-N: {ss['DD-N']:.2f}<br/>DD-S: {ss['DD-S']:.2f}<br/>GH-T: {ss['GH-T']}<br/>GH-N: {ss['GH-N']:.2f}<br/>GH-S: {ss['GH-S']:.2f}<br/>UE-T: {ss['UE-T']}<br/>UE-N: {ss['UE-N']:.2f}<br/>UE-S: {ss['UE-S']:.2f}<br/>EC-T: {ss['EC-T']}<br/>EC-N: {ss['EC-N']:.2f}<br/>EC-S: {ss['EC-S']:.2f}<br/>"
-                    elements.append(Paragraph(text, style))
-                    elements.append(Spacer(1, 12))
-                elements.append(Paragraph("Daily Breakdown", styles["Heading2"]))
-                for date, entries in daily_breakdown.items():
-                    elements.append(Paragraph(f"Date: {date}", styles["Heading3"]))
-                    for entry in entries:
-                        text = f"Store: {entry['Store']}<br/>TotSales: {entry['TotSales']:.2f}<br/>TotNet: {entry['TotNet']:.2f}<br/>TotTxns: {entry['TotTxns']}<br/>DD-T: {entry['DD-T']}<br/>DD-N: {entry['DD-N']:.2f}<br/>DD-S: {entry['DD-S']:.2f}<br/>GH-T: {entry['GH-T']}<br/>GH-N: {entry['GH-N']:.2f}<br/>GH-S: {entry['GH-S']:.2f}<br/>UE-T: {entry['UE-T']}<br/>UE-N: {entry['UE-N']:.2f}<br/>UE-S: {entry['UE-S']:.2f}<br/>EC-T: {entry['EC-T']}<br/>EC-N: {entry['EC-N']:.2f}<br/>EC-S: {entry['EC-S']:.2f}<br/>"
-                        elements.append(Paragraph(text, style))
-                        elements.append(Spacer(1, 12))
-                doc.build(elements)
-            except Exception as e:
-                messagebox.showerror("PDF Error", f"Failed to generate PDF: {e}", parent=dialog)
-                return
-        lines = txt.get("1.0", "end-1c").splitlines()
-        subj = "3rd-Party Report"
-        if lines and "3rd-Party Sales: " in lines[0]:
-            subj += " – " + lines[0].split(": ", 1)[1]
+        export_file(fmt, dialog, txt, tp_data, daily_breakdown, title, start_date, end_date, selected_stores)
         try:
             smtp = config_smtp
             msg = MIMEMultipart()
-            msg["Subject"] = subj
+            msg["Subject"] = f"3rd-Party Sales Report: {start_date} to {end_date}"
             msg["From"] = smtp["from"]
             msg["To"] = ", ".join(selected)
-            msg.attach(MIMEText("Please see the attached 3rd-party report."))
+            msg.attach(MIMEText(f"Please see the attached 3rd-party sales report for {start_date} to {end_date}."))
             with open(fname, "rb") as f:
                 attach = MIMEApplication(f.read(), _subtype=fmt.lower())
                 attach.add_header("Content-Disposition", "attachment", filename=os.path.basename(fname))
@@ -603,7 +259,7 @@ def open_email_dialog(window, txt, tp_data, store_summary, daily_breakdown, titl
             messagebox.showerror("Send Error", f"Failed to send: {e}", parent=dialog)
         finally:
             if os.path.exists(fname):
-                os.unlink(fname)  # Clean up after SMTP send
+                os.unlink(fname)
         dialog.destroy()
 
     btn_frame = tk.Frame(dialog)
@@ -615,13 +271,121 @@ def open_email_dialog(window, txt, tp_data, store_summary, daily_breakdown, titl
         tk.Button(btn_frame, text="Send Now", command=send_now, bg="#005228", fg="#ecc10c").pack(side="left", padx=5)
     tk.Button(btn_frame, text="Close", command=dialog.destroy, bg="#005228", fg="#ecc10c").pack(side="right", padx=5)
 
+def create_toolbar(window, txt, title, tp_data, daily_breakdown, start_date, end_date, selected_stores):
+    """Create revamped toolbar with Export .PDF/.JSON/.TXT/.CSV, Email, Print, Copy."""
+    toolbar = tk.Frame(window, bg="#f0f0f0")
+    toolbar.pack(fill="x", pady=(8, 0), padx=8)
+    copy_btn = tk.Button(toolbar, text="Copy", state=tk.DISABLED, bg="#005228", fg="#ecc10c", font=("Arial", 10))
+    copy_btn.pack(side="right", padx=4)
+    print_btn = tk.Button(toolbar, text="Print", state=tk.DISABLED, bg="#005228", fg="#ecc10c", font=("Arial", 10))
+    print_btn.pack(side="right", padx=4)
+    email_btn = tk.Button(toolbar, text="Email", state=tk.DISABLED, bg="#005228", fg="#ecc10c", font=("Arial", 10),
+                          command=lambda: open_email_dialog(window, txt, tp_data, daily_breakdown, title, start_date, end_date, selected_stores, config_emails, config_smtp))
+    email_btn.pack(side="right", padx=4)
+    csv_btn = tk.Button(toolbar, text="Export .CSV", state=tk.DISABLED, bg="#005228", fg="#ecc10c", font=("Arial", 10),
+                        command=lambda: export_file("CSV", window, txt, tp_data, daily_breakdown, title, start_date, end_date, selected_stores))
+    csv_btn.pack(side="right", padx=4)
+    txt_btn = tk.Button(toolbar, text="Export .TXT", state=tk.DISABLED, bg="#005228", fg="#ecc10c", font=("Arial", 10),
+                        command=lambda: export_file("TXT", window, txt, tp_data, daily_breakdown, title, start_date, end_date, selected_stores))
+    txt_btn.pack(side="right", padx=4)
+    json_btn = tk.Button(toolbar, text="Export .JSON", state=tk.DISABLED, bg="#005228", fg="#ecc10c", font=("Arial", 10),
+                         command=lambda: export_file("JSON", window, txt, tp_data, daily_breakdown, title, start_date, end_date, selected_stores))
+    json_btn.pack(side="right", padx=4)
+    pdf_btn = tk.Button(toolbar, text="Export .PDF", state=tk.DISABLED, bg="#005228", fg="#ecc10c", font=("Arial", 10),
+                        command=lambda: export_file("PDF", window, txt, tp_data, daily_breakdown, title, start_date, end_date, selected_stores))
+    pdf_btn.pack(side="right", padx=4)
+
+    def print_content():
+        if not REPORTLAB_AVAILABLE:
+            messagebox.showerror("PDF Error", "reportlab not available. Cannot print PDF.", parent=window)
+            return
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tf:
+            fname = tf.name
+        try:
+            doc = SimpleDocTemplate(fname, pagesize=letter)
+            styles = getSampleStyleSheet()
+            style = styles["Normal"]
+            style.fontName = "Courier"
+            style.fontSize = 10
+            elements = []
+            elements.append(Paragraph(title, styles["Title"]))
+            elements.append(Spacer(1, 12))
+            elements.append(Paragraph(f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", styles["Normal"]))
+            elements.append(Paragraph(f"Date Range: {start_date} to {end_date}", styles["Normal"]))
+            elements.append(Paragraph(f"Stores: {', '.join(selected_stores)}", styles["Normal"]))
+            elements.append(Spacer(1, 12))
+            elements.append(Paragraph("Third-Party Summary", styles["Heading2"]))
+            for sid in selected_stores:
+                for entry in tp_data:
+                    if entry["Store"] == sid:
+                        text = (f"Store: {entry['Store']:<6}<br/>"
+                                f"TotSales: ${entry['TotSales']:>10.2f}<br/>"
+                                f"TotNet: ${entry['TotNet']:>8.2f}<br/>"
+                                f"TotTxns: {entry['TotTxns']:>5}<br/>"
+                                f"DD-T: {entry['DD-T']:>5}<br/>"
+                                f"DD-N: ${entry['DD-N']:>8.2f}<br/>"
+                                f"DD-S: ${entry['DD-S']:>8.2f}<br/>"
+                                f"GH-T: {entry['GH-T']:>5}<br/>"
+                                f"GH-N: ${entry['GH-N']:>8.2f}<br/>"
+                                f"GH-S: ${entry['GH-S']:>8.2f}<br/>"
+                                f"UE-T: {entry['UE-T']:>5}<br/>"
+                                f"UE-N: ${entry['UE-N']:>8.2f}<br/>"
+                                f"UE-S: ${entry['UE-S']:>8.2f}<br/>"
+                                f"EC-T: {entry['EC-T']:>5}<br/>"
+                                f"EC-N: ${entry['EC-N']:>8.2f}<br/>"
+                                f"EC-S: ${entry['EC-S']:>8.2f}<br/>")
+                        elements.append(Paragraph(text, style))
+                        elements.append(Spacer(1, 12))
+            if not (start_date == end_date):
+                elements.append(Paragraph("Daily Breakdown", styles["Heading2"]))
+                for date in sorted(daily_breakdown):
+                    elements.append(Paragraph(f"Date: {date}", styles["Heading3"]))
+                    for sid in selected_stores:
+                        for entry in daily_breakdown[date]:
+                            if entry["Store"] == sid:
+                                text = (f"Store: {entry['Store']:<6}<br/>"
+                                        f"TotSales: ${entry['TotSales']:>10.2f}<br/>"
+                                        f"TotNet: ${entry['TotNet']:>8.2f}<br/>"
+                                        f"TotTxns: {entry['TotTxns']:>5}<br/>"
+                                        f"DD-T: {entry['DD-T']:>5}<br/>"
+                                        f"DD-N: ${entry['DD-N']:>8.2f}<br/>"
+                                        f"DD-S: ${entry['DD-S']:>8.2f}<br/>"
+                                        f"GH-T: {entry['GH-T']:>5}<br/>"
+                                        f"GH-N: ${entry['GH-N']:>8.2f}<br/>"
+                                        f"GH-S: ${entry['GH-S']:>8.2f}<br/>"
+                                        f"UE-T: {entry['UE-T']:>5}<br/>"
+                                        f"UE-N: ${entry['UE-N']:>8.2f}<br/>"
+                                        f"UE-S: ${entry['UE-S']:>8.2f}<br/>"
+                                        f"EC-T: {entry['EC-T']:>5}<br/>"
+                                        f"EC-N: ${entry['EC-N']:>8.2f}<br/>"
+                                        f"EC-S: ${entry['EC-S']:>8.2f}<br/>")
+                                elements.append(Paragraph(text, style))
+                                elements.append(Spacer(1, 12))
+            doc.build(elements)
+            os.startfile(fname, "print")
+        except Exception as e:
+            messagebox.showerror("Print Error", f"Failed to generate/print PDF: {e}", parent=window)
+        finally:
+            if os.path.exists(fname):
+                os.unlink(fname)
+
+    def enable_toolbar():
+        copy_btn.config(state=tk.NORMAL, command=lambda: (
+            window.clipboard_clear(),
+            window.clipboard_append(txt.get("1.0", "end-1c"))
+        ))
+        print_btn.config(state=tk.NORMAL, command=print_content)
+        email_btn.config(state=tk.NORMAL)
+        csv_btn.config(state=tk.NORMAL)
+        txt_btn.config(state=tk.NORMAL)
+        json_btn.config(state=tk.NORMAL)
+        if REPORTLAB_AVAILABLE:
+            pdf_btn.config(state=tk.NORMAL)
+    return enable_toolbar
+
 def run(window):
-    """Run the 3rd-Party report for selected stores and date range.
-    
-    Args:
-        window: Tk window to display the report.
-    """
-    from __main__ import get_selected_start_date, get_selected_end_date, fetch_data, store_vars, config_accounts, handle_rate_limit, log_error, config_max_workers, _password_validated, RateLimitError, config_emails, config_smtp
+    """Run the 3rd-Party report for selected stores and date range."""
+    from __main__ import get_selected_start_date, get_selected_end_date, fetch_data, store_vars, config_accounts, handle_rate_limit, log_error, config_max_workers, _password_validated, RateLimitError, config_emails, config_smtp, SCRIPT_DIR
 
     if not _password_validated:
         messagebox.showerror("Access Denied", "Password validation required.", parent=window)
@@ -646,7 +410,7 @@ def run(window):
         return
 
     # Set up window
-    window.title("3rd-Party Report")
+    window.title("3rd-Party Sales Report")
     parent = window.master
     parent.update_idletasks()
     px, py = parent.winfo_rootx(), parent.winfo_rooty()
@@ -658,15 +422,15 @@ def run(window):
     txt = ScrolledText(window, wrap="none", font=("Courier New", 11), fg="black", state="normal")
 
     selected_stores = [s for s, v in store_vars.items() if v.get()]
-    start_date_str = start.isoformat()
-    end_date_str = end.isoformat()
+    start_date_str = start.strftime("%Y-%m-%d")
+    end_date_str = end.strftime("%Y-%m-%d")
+    is_single_day = start == end
 
     # Create toolbar at the top with additional params
-    tp_data = []  # Structured data for individual entries
-    store_summary = defaultdict(lambda: {"Store": "", "TotSales": 0.0, "TotNet": 0.0, "TotTxns": 0, "DD-T": 0, "DD-N": 0.0, "DD-S": 0.0, "GH-T": 0, "GH-N": 0.0, "GH-S": 0.0, "UE-T": 0, "UE-N": 0.0, "UE-S": 0.0, "EC-T": 0, "EC-N": 0.0, "EC-S": 0.0})
-    daily_breakdown = defaultdict(list)  # Date -> list of daily entries
-    enable_toolbar = create_toolbar(window, txt, "3rd-Party Report", tp_data, store_summary, daily_breakdown, start_date_str, end_date_str, selected_stores)
-    log_error("Toolbar created", endpoint=TP_ENDPOINT)  # Debug log
+    tp_data = []
+    daily_breakdown = defaultdict(list)
+    enable_toolbar = create_toolbar(window, txt, f"3rd-Party Sales Report: {start_date_str} to {end_date_str}", tp_data, daily_breakdown, start_date_str, end_date_str, selected_stores)
+    log_error("Toolbar created", endpoint=TP_ENDPOINT)
 
     # Now pack txt below toolbar
     txt.pack(fill="both", expand=True, padx=8, pady=(4, 8))
@@ -678,23 +442,21 @@ def run(window):
     txt.tag_configure("sep", foreground="#888888")
 
     def log(line="", tag=None):
-        txt.configure(state="normal")  # Ensure widget is writable
+        txt.configure(state="normal")
         txt.insert("end", line + "\n", tag or ())
         txt.see("end")
         txt.update()
-        txt.configure(state="normal")  # Keep widget in normal state
-        log_error(f"Log: {line}", endpoint=TP_ENDPOINT)  # Debug log
+        txt.configure(state="normal")
+        log_error(f"Log: {line}", endpoint=TP_ENDPOINT)
 
     def worker():
         try:
-            # Check store selection
             if not selected_stores:
                 log("No stores selected.", "sep")
                 log_error("No stores selected", endpoint=TP_ENDPOINT)
                 window.after(0, enable_toolbar)
                 return
 
-            # Build store map
             store_map = {}
             for acct in config_accounts:
                 name = acct.get("Name", "")
@@ -715,274 +477,199 @@ def run(window):
                 return
 
             # Start report
-            s_str, e_str = start.isoformat(), end.isoformat()
-            log(f"3rd-Party Sales: {s_str} → {e_str}", "title")
-            log(f"Fetching data for {len(store_map)} stores…", "sep")
-            log("", None)  # Blank line for readability
+            log(f"3rd-Party Sales Report: {start_date_str} to {end_date_str}", "title")
+            log(f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", "sep")
+            log(f"Stores: {', '.join(selected_stores)}", "sep")
+            log(f"Fetching data for {len(store_map)} stores...", "sep")
+            log("", None)
 
             # Header for store/day views
-            hdr = f"{'Store':>6}  {'TotSales':>10}  {'TotNet':>10}  {'TotTxns':>8}  " \
-                  f"{'DD-T':>6} {'DD-N':>8} {'DD-S':>8}  " \
-                  f"{'GH-T':>6} {'GH-N':>8} {'GH-S':>8}  " \
-                  f"{'UE-T':>6} {'UE-N':>8} {'UE-S':>8}  " \
-                  f"{'EC-T':>6} {'EC-N':>8} {'EC-S':>8}"
+            hdr = f"{'Store':<6} {'TotSales':>10} {'TotNet':>8} {'TotTxns':>7} {'DD-T':>5} {'DD-N':>8} {'DD-S':>8} {'GH-T':>5} {'GH-N':>8} {'GH-S':>8} {'UE-T':>5} {'UE-N':>8} {'UE-S':>8} {'EC-T':>5} {'EC-N':>8} {'EC-S':>8}"
 
-            # Header for per-store views
-            hdr2 = f"{'Date':10}  {'TotSales':>10}  {'TotNet':>10}  {'TotTxns':>8}  " \
-                   f"{'DD-T':>6} {'DD-N':>8} {'DD-S':>8}  " \
-                   f"{'GH-T':>6} {'GH-N':>8} {'GH-S':>8}  " \
-                   f"{'UE-T':>6} {'UE-N':>8} {'UE-S':>8}  " \
-                   f"{'EC-T':>6} {'EC-N':>8} {'EC-S':>8}"
+            # Log top section header with aligned columns
+            top_title = f"{'Daily' if is_single_day else 'Third-Party'} Summary ({start_date_str})" if is_single_day else f"Third-Party Summary ({start_date_str} to {end_date_str})"
+            log(f"\n=== {top_title} ===", "title")
+            log(hdr, "heading")
+            log("─" * 75, "sep")
 
-            # Generate list of days
-            days = []
-            current = start
-            while current <= end:
-                days.append(current)
-                current += timedelta(days=1)
-
-            # Fetch data per day per store
+            # Fetch top summary per store
             futures = {}
-            lock = threading.Lock()
-            store_aggregates = defaultdict(lambda: {"TotSales": 0.0, "TotNet": 0.0, "TotTxns": 0, "DD-T": 0, "DD-N": 0.0, "DD-S": 0.0, "GH-T": 0, "GH-N": 0.0, "GH-S": 0.0, "UE-T": 0, "UE-N": 0.0, "UE-S": 0.0, "EC-T": 0, "EC-N": 0.0, "EC-S": 0.0})
-            with ThreadPoolExecutor(max_workers=config_max_workers) as ex:
-                for sid, (name, cid, ckey) in store_map.items():
-                    for day in days:
-                        day_str = day.isoformat()
-                        fut = ex.submit(fetch_data, TP_ENDPOINT, sid, day_str, day_str, cid, ckey)
-                        futures[fut] = (sid, day_str, cid, ckey)
+            with ThreadPoolExecutor(max_workers=min(config_max_workers, len(selected_stores))) as ex:
+                for sid, (aname, cid, ckey) in store_map.items():
+                    fut = ex.submit(fetch_data, TP_ENDPOINT, sid, start_date_str, end_date_str, cid, ckey)
+                    futures[fut] = (sid, cid, ckey)
 
                 for fut in as_completed(futures):
-                    sid, day_str, cid, ckey = futures[fut]
+                    sid, cid, ckey = futures[fut]
                     try:
                         res = fut.result()
-                        log_error(f"API response for store {sid} on {day_str}: {json.dumps(res, indent=2)}", endpoint=TP_ENDPOINT)
+                        log_error(f"API response for store {sid}: {json.dumps(res, indent=2)}", endpoint=TP_ENDPOINT)
                     except RateLimitError as ex:
-                        log_error(f"Rate limit for store {sid} on {day_str}: {ex}", endpoint=TP_ENDPOINT)
-                        log(f"⚠️ Store {sid} on {day_str}: Rate limit hit; skipping.", "sep")
+                        log_error(f"Rate limit for store {sid}: {ex}", endpoint=TP_ENDPOINT)
+                        log(f"⚠️ Store {sid}: Rate limit hit; skipping.", "sep")
                         continue
                     except Exception as ex:
-                        log_error(f"Fetch failed for store {sid} on {day_str}: {ex}", endpoint=TP_ENDPOINT)
-                        log(f"❌ Store {sid} on {day_str}: Exception: {ex}", "sep")
+                        log_error(f"Fetch failed for store {sid}: {ex}", sid, TP_ENDPOINT)
+                        log(f"❌ Store {sid}: Exception: {ex}", "sep")
                         continue
 
                     err = res.get("error")
                     if err:
-                        log_error(f"API error for store {sid} on {day_str}: {err}", endpoint=TP_ENDPOINT)
-                        log(f"❌ Store {sid} on {day_str}: {err}", "sep")
+                        log_error(f"API error for store {sid}: {err}", sid, TP_ENDPOINT)
+                        log(f"❌ Store {sid}: {err}", "sep")
                         continue
 
-                    data = res.get("data", res) or []
-                    if not data:
-                        continue
-                    if isinstance(data, dict):
-                        data = [data]
-                    rec = data[0] if data else {}
-
-                    ts = rec.get("totalSales", 0.0)
-                    n = rec.get("totalNetSales", 0.0)
-                    tt = rec.get("totalTransactions", 0)
-                    provs = rec.get("providers", [])
+                    data = res.get("data", []) or []
+                    obj = data[0] if data else {}
+                    ts = float(obj.get("totalSales", 0.0))
+                    n = float(obj.get("totalNetSales", 0.0))
+                    tt = int(obj.get("totalTransactions", 0))
+                    provs = obj.get("providers", [])
                     pm = {p.get("provider", "").lower(): p for p in provs}
                     def g(p, k, d=0):
                         return pm.get(p, {}).get(k, d)
-                    dd_t = g('doordash', 'transactions')
-                    dd_n = g('doordash', 'netSales', 0.0)
-                    dd_s = g('doordash', 'sales', 0.0)
-                    gh_t = g('grubhub', 'transactions')
-                    gh_n = g('grubhub', 'netSales', 0.0)
-                    gh_s = g('grubhub', 'sales', 0.0)
-                    ue_t = g('uber', 'transactions')
-                    ue_n = g('uber', 'netSales', 0.0)
-                    ue_s = g('uber', 'sales', 0.0)
-                    ec_t = g('ezcater', 'transactions')
-                    ec_n = g('ezcater', 'netSales', 0.0)
-                    ec_s = g('ezcater', 'sales', 0.0)
+                    dd_t = int(g('doordash', 'transactions', 0))
+                    dd_n = float(g('doordash', 'netSales', 0.0))
+                    dd_s = float(g('doordash', 'sales', 0.0))
+                    gh_t = int(g('grubhub', 'transactions', 0))
+                    gh_n = float(g('grubhub', 'netSales', 0.0))
+                    gh_s = float(g('grubhub', 'sales', 0.0))
+                    ue_t = int(g('uber', 'transactions', 0))
+                    ue_n = float(g('uber', 'netSales', 0.0))
+                    ue_s = float(g('uber', 'sales', 0.0))
+                    ec_t = int(g('ezcater', 'transactions', 0))
+                    ec_n = float(g('ezcater', 'netSales', 0.0))
+                    ec_s = float(g('ezcater', 'sales', 0.0))
+                    tp_data.append({"Store": sid, "TotSales": ts, "TotNet": n, "TotTxns": tt, 
+                                    "DD-T": dd_t, "DD-N": dd_n, "DD-S": dd_s, 
+                                    "GH-T": gh_t, "GH-N": gh_n, "GH-S": gh_s, 
+                                    "UE-T": ue_t, "UE-N": ue_n, "UE-S": ue_s, 
+                                    "EC-T": ec_t, "EC-N": ec_n, "EC-S": ec_s})
 
-                    date = day_str
-                    daily_breakdown[date].append({"Store": sid, "TotSales": ts, "TotNet": n, "TotTxns": tt, "DD-T": dd_t, "DD-N": dd_n, "DD-S": dd_s, "GH-T": gh_t, "GH-N": gh_n, "GH-S": gh_s, "UE-T": ue_t, "UE-N": ue_n, "UE-S": ue_s, "EC-T": ec_t, "EC-N": ec_n, "EC-S": ec_s})
+            # Log Third-Party Summary in selected_stores order
+            for sid in selected_stores:
+                found = False
+                for entry in tp_data:
+                    if entry["Store"] == sid:
+                        found = True
+                        log(f"{sid:<6} {entry['TotSales']:>10.2f} {entry['TotNet']:>8.2f} {entry['TotTxns']:>7} "
+                            f"{entry['DD-T']:>5} {entry['DD-N']:>8.2f} {entry['DD-S']:>8.2f} "
+                            f"{entry['GH-T']:>5} {entry['GH-N']:>8.2f} {entry['GH-S']:>8.2f} "
+                            f"{entry['UE-T']:>5} {entry['UE-N']:>8.2f} {entry['UE-S']:>8.2f} "
+                            f"{entry['EC-T']:>5} {entry['EC-N']:>8.2f} {entry['EC-S']:>8.2f}")
+                if not found:
+                    log(f"Store {sid}: No data available.", "sep")
 
-                    with lock:
-                        agg = store_aggregates[sid]
-                        agg["TotSales"] += ts
-                        agg["TotNet"] += n
-                        agg["TotTxns"] += tt
-                        agg["DD-T"] += dd_t
-                        agg["DD-N"] += dd_n
-                        agg["DD-S"] += dd_s
-                        agg["GH-T"] += gh_t
-                        agg["GH-N"] += gh_n
-                        agg["GH-S"] += gh_s
-                        agg["UE-T"] += ue_t
-                        agg["UE-N"] += ue_n
-                        agg["UE-S"] += ue_s
-                        agg["EC-T"] += ec_t
-                        agg["EC-N"] += ec_n
-                        agg["EC-S"] += ec_s
+            # Fetch daily breakdown per store
+            days = [start + timedelta(days=x) for x in range((end - start).days + 1)]
+            for day in days:
+                dstr = day.strftime("%Y-%m-%d")
+                futures = {}
+                with ThreadPoolExecutor(max_workers=min(config_max_workers, len(selected_stores))) as ex:
+                    for sid, (aname, cid, ckey) in store_map.items():
+                        fut = ex.submit(fetch_data, TP_ENDPOINT, sid, dstr, dstr, cid, ckey)
+                        futures[fut] = (sid, cid, ckey)
 
-            # Add aggregates to tp_data and store_summary
-            for sid in sorted(store_map.keys(), key=int):
-                agg = store_aggregates[sid]
-                if agg["TotSales"] > 0 or agg["TotTxns"] > 0:  # Only add if there is data
-                    agg["Store"] = sid
-                    tp_data.append(agg)
-                    store_summary[sid] = agg.copy()
+                    for fut in as_completed(futures):
+                        sid, cid, ckey = futures[fut]
+                        try:
+                            res = fut.result()
+                            log_error(f"API response for store {sid} on {dstr}: {json.dumps(res, indent=2)}", endpoint=TP_ENDPOINT)
+                        except RateLimitError as ex:
+                            log_error(f"Rate limit for store {sid} on {dstr}: {ex}", endpoint=TP_ENDPOINT)
+                            log(f"⚠️ Store {sid} on {dstr}: Rate limit hit; skipping.", "sep")
+                            continue
+                        except Exception as ex:
+                            log_error(f"Fetch failed for store {sid} on {dstr}: {ex}", sid, TP_ENDPOINT)
+                            log(f"❌ Store {sid} on {dstr}: Exception: {ex}", "sep")
+                            continue
 
-            # Log summary (always, as aggregate)
-            log("", None)
-            log("Third-Party Summary (All Days)" if start != end else "Third-Party Summary", "title")
-            log(hdr, "heading")
-            log("─" * len(hdr), "sep")
-            grand_tot_sales = 0.0
-            grand_tot_net = 0.0
-            grand_tot_txns = 0
-            grand_dd_t = 0
-            grand_dd_n = 0.0
-            grand_dd_s = 0.0
-            grand_gh_t = 0
-            grand_gh_n = 0.0
-            grand_gh_s = 0.0
-            grand_ue_t = 0
-            grand_ue_n = 0.0
-            grand_ue_s = 0.0
-            grand_ec_t = 0
-            grand_ec_n = 0.0
-            grand_ec_s = 0.0
-            for entry in sorted(tp_data, key=lambda x: int(x["Store"])):
-                log(f"{entry['Store']:>6}  {entry['TotSales']:>10.2f}  {entry['TotNet']:>10.2f}  {entry['TotTxns']:>8}  "
-                    f"{entry['DD-T']:>6} {entry['DD-N']:>8.2f} {entry['DD-S']:>8.2f}  "
-                    f"{entry['GH-T']:>6} {entry['GH-N']:>8.2f} {entry['GH-S']:>8.2f}  "
-                    f"{entry['UE-T']:>6} {entry['UE-N']:>8.2f} {entry['UE-S']:>8.2f}  "
-                    f"{entry['EC-T']:>6} {entry['EC-N']:>8.2f} {entry['EC-S']:>8.2f}")
-                grand_tot_sales += entry['TotSales']
-                grand_tot_net += entry['TotNet']
-                grand_tot_txns += entry['TotTxns']
-                grand_dd_t += entry['DD-T']
-                grand_dd_n += entry['DD-N']
-                grand_dd_s += entry['DD-S']
-                grand_gh_t += entry['GH-T']
-                grand_gh_n += entry['GH-N']
-                grand_gh_s += entry['GH-S']
-                grand_ue_t += entry['UE-T']
-                grand_ue_n += entry['UE-N']
-                grand_ue_s += entry['UE-S']
-                grand_ec_t += entry['EC-T']
-                grand_ec_n += entry['EC-N']
-                grand_ec_s += entry['EC-S']
-            log("─" * len(hdr), "sep")
-            log(f"{'Total':>6}  {grand_tot_sales:>10.2f}  {grand_tot_net:>10.2f}  {grand_tot_txns:>8}  "
-                f"{grand_dd_t:>6} {grand_dd_n:>8.2f} {grand_dd_s:>8.2f}  "
-                f"{grand_gh_t:>6} {grand_gh_n:>8.2f} {grand_gh_s:>8.2f}  "
-                f"{grand_ue_t:>6} {grand_ue_n:>8.2f} {grand_ue_s:>8.2f}  "
-                f"{grand_ec_t:>6} {grand_ec_n:>8.2f} {grand_ec_s:>8.2f}")
+                        err = res.get("error")
+                        if err:
+                            log_error(f"API error for store {sid} on {dstr}: {err}", sid, TP_ENDPOINT)
+                            log(f"❌ Store {sid} on {dstr}: {err}", "sep")
+                            continue
 
-            # Log daily sections only if multi-day
-            if start != end:
-                for date in sorted(daily_breakdown):
+                        data = res.get("data", []) or []
+                        obj = data[0] if data else {}
+                        date_key = next((k for k in obj if "date" in k.lower()), None)
+                        raw = obj.get(date_key, dstr)
+                        date = raw.split("T")[0] if "T" in str(raw) else str(raw)
+                        try:
+                            parsed_date = datetime.strptime(date, "%Y-%m-%d").date()
+                            date = parsed_date.strftime("%Y-%m-%d")
+                        except ValueError:
+                            log_error(f"Invalid date format for store {sid} on {dstr}: {raw}", endpoint=TP_ENDPOINT)
+                            continue
+                        ts = float(obj.get("totalSales", 0.0))
+                        n = float(obj.get("totalNetSales", 0.0))
+                        tt = int(obj.get("totalTransactions", 0))
+                        provs = obj.get("providers", [])
+                        pm = {p.get("provider", "").lower(): p for p in provs}
+                        def g(p, k, d=0):
+                            return pm.get(p, {}).get(k, d)
+                        dd_t = int(g('doordash', 'transactions', 0))
+                        dd_n = float(g('doordash', 'netSales', 0.0))
+                        dd_s = float(g('doordash', 'sales', 0.0))
+                        gh_t = int(g('grubhub', 'transactions', 0))
+                        gh_n = float(g('grubhub', 'netSales', 0.0))
+                        gh_s = float(g('grubhub', 'sales', 0.0))
+                        ue_t = int(g('uber', 'transactions', 0))
+                        ue_n = float(g('uber', 'netSales', 0.0))
+                        ue_s = float(g('uber', 'sales', 0.0))
+                        ec_t = int(g('ezcater', 'transactions', 0))
+                        ec_n = float(g('ezcater', 'netSales', 0.0))
+                        ec_s = float(g('ezcater', 'sales', 0.0))
+                        daily_breakdown[date].append({"Store": sid, "TotSales": ts, "TotNet": n, "TotTxns": tt, 
+                                                      "DD-T": dd_t, "DD-N": dd_n, "DD-S": dd_s, 
+                                                      "GH-T": gh_t, "GH-N": gh_n, "GH-S": gh_s, 
+                                                      "UE-T": ue_t, "UE-N": ue_n, "UE-S": ue_s, 
+                                                      "EC-T": ec_t, "EC-N": ec_n, "EC-S": ec_s})
+
+                # Log per-day summaries only for multi-day
+                if not is_single_day:
                     log("", None)
-                    log(f"Per-Day Third-Party Summary ({date})", "title")
-                    log(hdr, "heading")
-                    log("─" * len(hdr), "sep")
-                    day_tot_sales = 0.0
-                    day_tot_net = 0.0
-                    day_tot_txns = 0
-                    day_dd_t = 0
-                    day_dd_n = 0.0
-                    day_dd_s = 0.0
-                    day_gh_t = 0
-                    day_gh_n = 0.0
-                    day_gh_s = 0.0
-                    day_ue_t = 0
-                    day_ue_n = 0.0
-                    day_ue_s = 0.0
-                    day_ec_t = 0
-                    day_ec_n = 0.0
-                    day_ec_s = 0.0
-                    entries = sorted(daily_breakdown[date], key=lambda x: int(x["Store"]))
-                    for entry in entries:
-                        log(f"{entry['Store']:>6}  {entry['TotSales']:>10.2f}  {entry['TotNet']:>10.2f}  {entry['TotTxns']:>8}  "
-                            f"{entry['DD-T']:>6} {entry['DD-N']:>8.2f} {entry['DD-S']:>8.2f}  "
-                            f"{entry['GH-T']:>6} {entry['GH-N']:>8.2f} {entry['GH-S']:>8.2f}  "
-                            f"{entry['UE-T']:>6} {entry['UE-N']:>8.2f} {entry['UE-S']:>8.2f}  "
-                            f"{entry['EC-T']:>6} {entry['EC-N']:>8.2f} {entry['EC-S']:>8.2f}")
-                        day_tot_sales += entry['TotSales']
-                        day_tot_net += entry['TotNet']
-                        day_tot_txns += entry['TotTxns']
-                        day_dd_t += entry['DD-T']
-                        day_dd_n += entry['DD-N']
-                        day_dd_s += entry['DD-S']
-                        day_gh_t += entry['GH-T']
-                        day_gh_n += entry['GH-N']
-                        day_gh_s += entry['GH-S']
-                        day_ue_t += entry['UE-T']
-                        day_ue_n += entry['UE-N']
-                        day_ue_s += entry['UE-S']
-                        day_ec_t += entry['EC-T']
-                        day_ec_n += entry['EC-N']
-                        day_ec_s += entry['EC-S']
-                    log("─" * len(hdr), "sep")
-                    log(f"{'Total':>6}  {day_tot_sales:>10.2f}  {day_tot_net:>10.2f}  {day_tot_txns:>8}  "
-                        f"{day_dd_t:>6} {day_dd_n:>8.2f} {day_dd_s:>8.2f}  "
-                        f"{day_gh_t:>6} {day_gh_n:>8.2f} {day_gh_s:>8.2f}  "
-                        f"{day_ue_t:>6} {day_ue_n:>8.2f} {day_ue_s:>8.2f}  "
-                        f"{day_ec_t:>6} {day_ec_n:>8.2f} {day_ec_s:>8.2f}")
+                    log(f"Per-Day Third-Party Summary ({dstr})", "title")
+                    log("─" * 75, "sep")
+                    log(f"{'Store':<6} {'TotSales':>10} {'TotNet':>8} {'TotTxns':>7} {'DD-T':>5} {'DD-N':>8} {'DD-S':>8} {'GH-T':>5} {'GH-N':>8} {'GH-S':>8} {'UE-T':>5} {'UE-N':>8} {'UE-S':>8} {'EC-T':>5} {'EC-N':>8} {'EC-S':>8}", "heading")
+                    log("─" * 75, "sep")
+                    for sid in selected_stores:
+                        found = False
+                        for entry in daily_breakdown[dstr]:
+                            if entry["Store"] == sid:
+                                found = True
+                                log(f"{entry['Store']:<6} {entry['TotSales']:>10.2f} {entry['TotNet']:>8.2f} {entry['TotTxns']:>7} "
+                                    f"{entry['DD-T']:>5} {entry['DD-N']:>8.2f} {entry['DD-S']:>8.2f} "
+                                    f"{entry['GH-T']:>5} {entry['GH-N']:>8.2f} {entry['GH-S']:>8.2f} "
+                                    f"{entry['UE-T']:>5} {entry['UE-N']:>8.2f} {entry['UE-S']:>8.2f} "
+                                    f"{entry['EC-T']:>5} {entry['EC-N']:>8.2f} {entry['EC-S']:>8.2f}")
+                        if not found:
+                            log(f"{sid:<6} {0.0:>10.2f} {0.0:>8.2f} {0:>7} {0:>5} {0.0:>8.2f} {0.0:>8.2f} "
+                                f"{0:>5} {0.0:>8.2f} {0.0:>8.2f} {0:>5} {0.0:>8.2f} {0.0:>8.2f} "
+                                f"{0:>5} {0.0:>8.2f} {0.0:>8.2f}")
+                    log("─" * 75, "sep")
 
-            # Log per-store daily breakdown
-            for sid in sorted(selected_stores, key=int):
-                log("", None)
-                log(f"Per-Store Breakdown for {sid}", "title")
-                log(hdr2, "heading")
-                log("─" * len(hdr2), "sep")
-                has_data = False
-                store_tot_sales = 0.0
-                store_tot_net = 0.0
-                store_tot_txns = 0
-                store_dd_t = 0
-                store_dd_n = 0.0
-                store_dd_s = 0.0
-                store_gh_t = 0
-                store_gh_n = 0.0
-                store_gh_s = 0.0
-                store_ue_t = 0
-                store_ue_n = 0.0
-                store_ue_s = 0.0
-                store_ec_t = 0
-                store_ec_n = 0.0
-                store_ec_s = 0.0
-                for date in sorted(daily_breakdown):
-                    for entry in daily_breakdown[date]:
-                        if entry["Store"] == sid:
-                            has_data = True
-                            log(f"{date:10}  {entry['TotSales']:>10.2f}  {entry['TotNet']:>10.2f}  {entry['TotTxns']:>8}  "
-                                f"{entry['DD-T']:>6} {entry['DD-N']:>8.2f} {entry['DD-S']:>8.2f}  "
-                                f"{entry['GH-T']:>6} {entry['GH-N']:>8.2f} {entry['GH-S']:>8.2f}  "
-                                f"{entry['UE-T']:>6} {entry['UE-N']:>8.2f} {entry['UE-S']:>8.2f}  "
-                                f"{entry['EC-T']:>6} {entry['EC-N']:>8.2f} {entry['EC-S']:>8.2f}")
-                            store_tot_sales += entry['TotSales']
-                            store_tot_net += entry['TotNet']
-                            store_tot_txns += entry['TotTxns']
-                            store_dd_t += entry['DD-T']
-                            store_dd_n += entry['DD-N']
-                            store_dd_s += entry['DD-S']
-                            store_gh_t += entry['GH-T']
-                            store_gh_n += entry['GH-N']
-                            store_gh_s += entry['GH-S']
-                            store_ue_t += entry['UE-T']
-                            store_ue_n += entry['UE-N']
-                            store_ue_s += entry['UE-S']
-                            store_ec_t += entry['EC-T']
-                            store_ec_n += entry['EC-N']
-                            store_ec_s += entry['EC-S']
-                if not has_data:
-                    log("No data for this store.")
-                else:
-                    log("─" * len(hdr2), "sep")
-                    log(f"{'Total':10}  {store_tot_sales:>10.2f}  {store_tot_net:>10.2f}  {store_tot_txns:>8}  "
-                        f"{store_dd_t:>6} {store_dd_n:>8.2f} {store_dd_s:>8.2f}  "
-                        f"{store_gh_t:>6} {store_gh_n:>8.2f} {store_gh_s:>8.2f}  "
-                        f"{store_ue_t:>6} {store_ue_n:>8.2f} {store_ue_s:>8.2f}  "
-                        f"{store_ec_t:>6} {store_ec_n:>8.2f} {store_ec_s:>8.2f}")
-                log("─" * len(hdr2), "sep")
+            # Log per-store daily breakdown only for multi-day
+            if not is_single_day:
+                for sid in selected_stores:
+                    log("", None)
+                    log(f"Per-Store Breakdown for {sid}", "title")
+                    log("─" * 75, "sep")
+                    log(f"{'Date':<10} {'TotSales':>10} {'TotNet':>8} {'TotTxns':>7} {'DD-T':>5} {'DD-N':>8} {'DD-S':>8} {'GH-T':>5} {'GH-N':>8} {'GH-S':>8} {'UE-T':>5} {'UE-N':>8} {'UE-S':>8} {'EC-T':>5} {'EC-N':>8} {'EC-S':>8}", "heading")
+                    log("─" * 75, "sep")
+                    has_data = False
+                    for date in sorted(daily_breakdown):
+                        for entry in daily_breakdown[date]:
+                            if entry["Store"] == sid:
+                                has_data = True
+                                log(f"{date:<10} {entry['TotSales']:>10.2f} {entry['TotNet']:>8.2f} {entry['TotTxns']:>7} "
+                                    f"{entry['DD-T']:>5} {entry['DD-N']:>8.2f} {entry['DD-S']:>8.2f} "
+                                    f"{entry['GH-T']:>5} {entry['GH-N']:>8.2f} {entry['GH-S']:>8.2f} "
+                                    f"{entry['UE-T']:>5} {entry['UE-N']:>8.2f} {entry['UE-S']:>8.2f} "
+                                    f"{entry['EC-T']:>5} {entry['EC-N']:>8.2f} {entry['EC-S']:>8.2f}")
+                    if not has_data:
+                        log(f"No data for this store.")
+                    log("─" * 75, "sep")
 
             # Clean up
             idx = txt.search("Fetching data for ", "1.0", tk.END)
@@ -994,7 +681,6 @@ def run(window):
             log(f"❌ Report error: {ex}", "sep")
             window.after(0, enable_toolbar)
 
-    # Start worker thread
     threading.Thread(target=worker, daemon=True).start()
 
 if __name__ == "__main__":
