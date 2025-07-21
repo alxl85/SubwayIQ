@@ -488,15 +488,54 @@ SubwayIQ interacts with the Subway LiveIQ franchisee API (documented at [Swagger
 
 ---
 
-## LiveIQ API Quirks & Pitfalls
-| Issue | Impact | Mitigation |
-|-------|--------|-----------|
-| Undocumented rate limit (~60 req/min) | 429 errors | Set `config_max_workers` ≤ 8; use `handle_rate_limit` with retries. |
-| 30–60 min data latency | Incomplete “Today” data | Pull data after store close or note in reports. |
-| Field drift (e.g., `netSale` vs. `netSales`) | KeyError | Use `.get()` with defaults in module code. |
-| Inconsistent timestamps | Timezone mismatches | Convert with `pytz` (not currently implemented). |
-| Random 500/502 errors | Module crashes | Wrap API calls in `try/except`; log via `log_error`. |
-| Empty API responses | Missing data | Check for `data` key; display “No data” messages. |
+LiveIQ API quirks & pitfalls
+Issue	Impact	Mitigation
+Undocumented rate-limit (~60 req/min)	429 errors	Use config_max_workers (≤10 threads) + retry with handle_rate_limit.
+30–60 min data latency	“Today” appears low	Pull after close or note in reports (e.g., “No data for today”).
+Field drift (netSale → netSales)	KeyError	Use .get() with defaults.
+Store-local timestamps	Cross‑TZ math off	Convert with pytz.
+Random 500/502	Module crash	Wrap loops in try/except, log via log_error.
+Developing custom modules
+This site outlines the entire LiveIQ API schema. https://app.swaggerhub.com/apis/Subway/freshconnect_liveiq_franchisee_api/v1
+
+Each module is one file in modules/. The viewer imports it and calls run(window).
+
+Minimal module example
+Available host helpers
+Helper	Purpose
+fetch_data()	Wrapper around LiveIQ request
+store_vars	Dict of checked stores
+config_accounts	Account config (includes StoreIDs)
+handle_rate_limit()	Handles 429 errors with exponential back‑off
+log_error()	Append to error.log
+config_max_workers	Max threads for ThreadPoolExecutor (≤10)
+flatten_json()	Turn nested JSON into dotted paths
+Common patterns
+Goal	Snippet
+Background thread	threading.Thread(target=fn, daemon=True).start()
+Log to ScrolledText	log("Message", "tag") (tags: title, heading, sep)
+Fetch data in parallel	with ThreadPoolExecutor(max_workers=config_max_workers) as ex: ...
+Flatten JSON	flat = flatten_json(data)
+LiveIQ endpoint names
+Dropdown label	fetch_data value
+Sales Summary	"Sales Summary"
+Daily Sales Summary	"Daily Sales Summary"
+Daily Timeclock	"Daily Timeclock"
+Third Party Sales Summary	"Third Party Sales Summary"
+Third Party Transaction Summary	"Third Party Transaction Summary"
+Transaction Summary	"Transaction Summary"
+Transaction Details	"Transaction Details"
+Debugging tips
+Run from a terminal (omit --noconsole) so print() is visible.
+Wrap risky code with try/except and log via log_error().
+Import heavy libs inside run()—helps PyInstaller.
+Contributing
+Pull requests welcome!
+
+Fork → feature branch
+pip install -r requirements-dev.txt
+pre-commit install
+Open a PR with screenshot/GIF if UI‑related.
 
 ---
 
