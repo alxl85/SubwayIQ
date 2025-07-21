@@ -8,6 +8,7 @@ from tkinter.scrolledtext import ScrolledText
 from tkcalendar import DateEntry
 import json
 import os
+import sys
 from datetime import datetime, time, timedelta, timezone
 from typing import Any, Dict, List, Set
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -27,7 +28,7 @@ import socket
 from requests.exceptions import HTTPError
 
 # ── Constants ─────────────────────────────────────────────────────────────
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+SCRIPT_DIR = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(SCRIPT_DIR, "config.dat")
 LOG_FILE = os.path.join(SCRIPT_DIR, "error.log")
 BASE_URL = "https://liveiqfranchiseeapi.subway.com"
@@ -261,6 +262,16 @@ def load_config_and_stores(root, password: str):
         "smtp": {}
     }
 
+    # Ensure modules directory exists and populate with defaults if empty
+    modules_dir = os.path.join(SCRIPT_DIR, "modules")
+    os.makedirs(modules_dir, exist_ok=True)
+    for module_name, content in DEFAULT_MODULE_CONTENT.items():
+        module_path = os.path.join(modules_dir, module_name)
+        if not os.path.exists(module_path):
+            with open(module_path, "w", encoding="utf-8") as fh:
+                fh.write(content)
+
+    # Handle config file
     if not os.path.isfile(CONFIG_FILE):
         with open(CONFIG_FILE, "wb") as fh:
             fh.write(encrypt_config(default_cfg, password))
@@ -731,81 +742,206 @@ def reset_config(root):
     update_treeview()
     update_button_states()
 
+import os
+import time
+import requests
+from tkinter import messagebox, ttk, Toplevel
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+@retry(stop=stop_after_attempt(5), wait=wait_exponential(multiplier=1, min=2, max=20))
+def download_module(url, mod_path):
+    """Download a single module from GitHub with retries."""
+    res = requests.get(url, timeout=20)
+    res.raise_for_status()
+    content = res.text.strip()
+    if not content:
+        raise ValueError("Downloaded content is empty")
+    if not (content.startswith("#") or content.startswith("import") or content.startswith("from")):
+        raise ValueError("Downloaded content does not appear to be valid Python code")
+    if os.path.exists(mod_path):
+        if os.name != "nt":  # Skip chmod on Windows unless necessary
+            os.chmod(mod_path, 0o666)  # Ensure file is writable
+    with open(mod_path, "w", encoding="utf-8") as fh:
+        fh.write(content)
+    return content
+
 def reset_modules(root):
-    """Reset modules to default set and remove others, downloading from GitHub if online."""
+    """Clear all .py files in the modules directory, confirm deletion, download fresh copies from GitHub, confirm downloads, and update UI."""
     if not _password_validated:
         messagebox.showerror("Access Denied", "Password validation required.", parent=root)
         return
-    if not messagebox.askyesno("Confirm Reset", "This will reset modules to the default set and remove any others. Proceed?", parent=root):
+    if not messagebox.askyesno("Confirm Reset", "This will delete all Python module files, confirm deletion, download fresh copies from GitHub, and update the UI. Proceed?", parent=root):
         return
+
+    # Create a progress window
+    progress_win = Toplevel(root)
+    progress_win.title("Resetting Modules")
+    progress_win.geometry("400x200")
+    x = (root.winfo_screenwidth() - 400) // 2
+    y = (root.winfo_screenheight() - 200) // 2
+    progress_win.geometry(f"+{x}+{y}")
+    progress_win.transient(root)
+    progress_win.grab_set()
+    progress_win.protocol("WM_DELETE_WINDOW", lambda: None)  # Disable close button
+    tk.Label(progress_win, text="Resetting Modules...", font=("Arial", 12, "bold")).pack(pady=10)
+    progress_bar = ttk.Progressbar(progress_win, mode="determinate")
+    progress_bar.pack(fill="x", padx=20, pady=10)
+    status_label = tk.Label(progress_win, text="", wraplength=350)
+    status_label.pack(pady=5)
+    progress_win.update()
+
     mod_dir = os.path.join(SCRIPT_DIR, "modules")
     os.makedirs(mod_dir, exist_ok=True)
     current_files = set(os.listdir(mod_dir))
-    default_modules = {"3rd-Party.py", "Transactions.py", "Items-Sold.py", "Discounts.py", "Labor.py", "Sales.py", "_CUSTOM.py"}
     deleted_files = []
     failed_deletions = []
-    
-    # Remove non-default .py files
-    for file in current_files:
-        if file.endswith(".py") and file not in default_modules:
-            try:
-                file_path = os.path.join(mod_dir, file)
-                # Ensure file is writable before deletion
-                os.chmod(file_path, 0o666)  # Set permissions to allow deletion
-                os.remove(file_path)
-                deleted_files.append(file)
-                log_error(f"Removed non-default module: {file}")
-            except Exception as e:
-                failed_deletions.append(file)
-                log_error(f"Failed to remove module {file}: {e}")
 
-    # Report deletion status
-    if failed_deletions:
-        messagebox.showwarning("Deletion Warning", f"Failed to delete some non-default modules: {', '.join(failed_deletions)}. Continuing with downloads.", parent=root)
-
-    # Attempt GitHub download if online
-    if check_internet_connection():
-        failed_downloads = []
-        successful_downloads = []
-        try:
-            github_base = "https://raw.githubusercontent.com/alex85/subwayiq/main/modules/"
-            for mod_name in default_modules:
-                url = github_base + mod_name
+    try:
+        # Step 1: Delete all .py files in the modules directory
+        py_files = [f for f in current_files if f.lower().endswith(".py")]
+        total_steps = len(py_files) + 3  # Deletion + Confirm Deletion + API Call + Downloads
+        progress_bar["maximum"] = total_steps
+        progress_bar["value"] = 0
+        if py_files:
+            status_label.config(text="Deleting local module files...")
+            progress_win.update()
+        for file in py_files:
+            file_path = os.path.normpath(os.path.join(mod_dir, file))
+            for attempt in range(5):  # Retry deletion up to 5 times
                 try:
-                    res = requests.get(url, timeout=5)
-                    res.raise_for_status()  # Raise exception for non-200 status codes
-                    content = res.text
-                    # Verify content is not empty and looks like Python code
-                    if not content.strip():
-                        raise ValueError("Downloaded content is empty")
-                    if not content.startswith("#") and not content.startswith("import") and not content.startswith("from"):
-                        raise ValueError("Downloaded content does not appear to be valid Python code")
-                    mod_path = os.path.join(mod_dir, mod_name)
-                    # Ensure file is writable
-                    if os.path.exists(mod_path):
-                        os.chmod(mod_path, 0o666)
-                    with open(mod_path, "w", encoding="utf-8") as fh:
-                        fh.write(content)
-                    successful_downloads.append(mod_name)
-                    log_error(f"Downloaded and restored module from GitHub: {mod_name}")
-                    time.sleep(2)  # Sleep for 2 seconds between downloads
+                    if os.name != "nt":  # Skip chmod on Windows unless necessary
+                        os.chmod(file_path, 0o666)  # Ensure file is writable
+                    os.remove(file_path)
+                    deleted_files.append(file)
+                    log_error(f"Deleted module: {file}")
+                    break
+                except OSError as e:
+                    if attempt < 4:
+                        time.sleep(2)  # Wait 2 seconds before retrying
+                        continue
+                    failed_deletions.append(file)
+                    log_error(f"Failed to delete {file}: {e}")
                 except Exception as e:
-                    failed_downloads.append(mod_name)
-                    log_error(f"Failed to download module {mod_name}: {e} (HTTP Status: {res.status_code if 'res' in locals() else 'N/A'})")
-            
-            # Report download status
-            if failed_downloads:
-                messagebox.showerror("Reset Error", f"Failed to download modules from GitHub: {', '.join(failed_downloads)}. Successfully downloaded: {', '.join(successful_downloads) if successful_downloads else 'none'}. Modules partially reset.", parent=root)
-            else:
-                messagebox.showinfo("Modules Reset", f"Modules reset to latest defaults from GitHub. Successfully downloaded: {', '.join(successful_downloads)}.", parent=root)
-        except Exception as e:
-            log_error(f"GitHub download failed: {e}")
-            messagebox.showerror("Reset Error", f"Failed to download modules from GitHub: {e}. Successfully downloaded: {', '.join(successful_downloads) if successful_downloads else 'none'}. Modules partially reset.", parent=root)
-    else:
-        messagebox.showerror("No Internet", "No internet connection. Cannot download modules from GitHub.", parent=root)
+                    failed_deletions.append(file)
+                    log_error(f"Failed to delete {file}: Unexpected error: {e}")
+                    break
+            progress_bar["value"] += 1
+            progress_win.update()
 
-    # Reload modules
-    load_external_modules(root)
+        # Report deletion status
+        if failed_deletions:
+            messagebox.showerror("Deletion Error", f"Failed to delete some modules: {', '.join(failed_deletions)}. Aborting reset.", parent=progress_win)
+            return
+
+        # Step 2: Confirm all .py files are deleted
+        status_label.config(text="Confirming deletion of module files...")
+        progress_win.update()
+        root.after(5000)  # Non-blocking 5-second delay
+        remaining_files = [f for f in os.listdir(mod_dir) if f.lower().endswith(".py")]
+        if remaining_files:
+            messagebox.showerror("Deletion Confirmation Failed", f"Some module files remain: {', '.join(remaining_files)}. Aborting reset.", parent=progress_win)
+            return
+        log_error("All module files successfully deleted")
+        progress_bar["value"] += 1
+        progress_win.update()
+
+        # Step 3: Download updated .py files from GitHub
+        if not check_internet_connection():
+            messagebox.showerror("No Internet", "No internet connection. Cannot download modules.", parent=progress_win)
+            return
+
+        github_api = "https://api.github.com/repos/alxl85/SubwayIQ/contents/modules"
+        github_raw = "https://raw.githubusercontent.com/alxl85/SubwayIQ/main/modules/"
+        successful = []
+        failed = []
+
+        status_label.config(text="Fetching module list from GitHub...")
+        progress_win.update()
+        res = requests.head(github_api, timeout=20)
+        res.raise_for_status()
+        res = requests.get(github_api, timeout=20)
+        res.raise_for_status()
+        module_list = [item["name"] for item in res.json() if item["type"] == "file" and item["name"].lower().endswith(".py")]
+        if not module_list:
+            log_error("No .py files found in GitHub modules folder")
+            messagebox.showerror("Reset Error", "No Python files found in the GitHub modules folder.", parent=progress_win)
+            return
+        progress_bar["maximum"] = total_steps + len(module_list)
+        progress_bar["value"] = len(py_files) + 2
+        progress_win.update()
+
+        # Download each file with retries
+        for name in module_list:
+            safe_name = os.path.basename(name)
+            if not safe_name.lower().endswith(".py"):
+                failed.append(safe_name)
+                log_error(f"Skipping invalid file name: {safe_name}")
+                continue
+            url = github_raw + requests.utils.quote(safe_name)
+            mod_path = os.path.normpath(os.path.join(mod_dir, safe_name))
+            status_label.config(text=f"Downloading {safe_name}...")
+            progress_win.update()
+            try:
+                head_res = requests.head(url, timeout=20)
+                head_res.raise_for_status()
+                download_module(url, mod_path)
+                successful.append(safe_name)
+                log_error(f"Downloaded module: {safe_name}")
+                root.after(5000)  # Non-blocking 5-second delay
+            except requests.exceptions.HTTPError as e:
+                failed.append(safe_name)
+                log_error(f"Failed to download {safe_name}: HTTP Error {e.response.status_code} - {e} (RateLimit-Remaining: {e.response.headers.get('X-RateLimit-Remaining', 'N/A')}, RateLimit-Reset: {e.response.headers.get('X-RateLimit-Reset', 'N/A')})")
+            except Exception as e:
+                failed.append(safe_name)
+                log_error(f"Failed to download {safe_name}: {e} (HTTP Status: {head_res.status_code if 'head_res' in locals() else 'N/A'})")
+            progress_bar["value"] += 1
+            progress_win.update()
+
+        # Step 4: Confirm downloaded modules
+        status_label.config(text="Confirming downloaded modules...")
+        progress_win.update()
+        root.after(5000)  # Non-blocking 5-second delay
+        downloaded_files = [f for f in os.listdir(mod_dir) if f.lower().endswith(".py")]
+        expected_files = set(module_list)
+        actual_files = set(downloaded_files)
+        missing_files = expected_files - actual_files
+        if missing_files:
+            failed.extend(missing_files)
+            log_error(f"Missing downloaded modules: {', '.join(missing_files)}")
+            messagebox.showerror("Download Confirmation Failed", f"Some modules not downloaded: {', '.join(missing_files)}. Downloaded: {', '.join(successful) if successful else 'none'}", parent=progress_win)
+            return
+        for file in downloaded_files:
+            file_path = os.path.join(mod_dir, file)
+            if os.path.getsize(file_path) == 0:
+                failed.append(file)
+                log_error(f"Downloaded module is empty: {file}")
+                messagebox.showerror("Download Confirmation Failed", f"Some modules are empty: {file}. Downloaded: {', '.join(successful) if successful else 'none'}", parent=progress_win)
+                return
+        log_error("All modules successfully downloaded and verified")
+
+        # Step 5: Report final status
+        if successful and failed:
+            messagebox.showerror("Partial Reset", f"Downloaded: {', '.join(successful)}\nFailed: {', '.join(failed)}", parent=progress_win)
+        elif successful:
+            messagebox.showinfo("Modules Reset", f"All modules successfully reset: {', '.join(successful)}", parent=progress_win)
+        else:
+            messagebox.showerror("Reset Failed", f"No modules downloaded. Failed: {', '.join(failed) if failed else 'none'}", parent=progress_win)
+
+        # Step 6: Update UI
+        try:
+            status_label.config(text="Updating UI with new modules...")
+            progress_win.update()
+        except Exception as e:
+            log_error(f"Failed to update status label: {e}")
+        root.after(5000)  # Non-blocking 5-second delay
+        load_external_modules(root)
+
+    finally:
+        # Ensure progress window is destroyed only at the end
+        try:
+            progress_win.destroy()
+        except Exception as e:
+            log_error(f"Failed to destroy progress window: {e}")
 
 def validate_and_view(endpoint, stores, start, end, root):
     """Validate dates and open a window to display raw API data."""
